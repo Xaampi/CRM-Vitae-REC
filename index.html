@@ -124,7 +124,207 @@
         <h1 id="topbar-title">Inicio</h1>
       </div>
       <div class="content">
-        <div id="views-container"></div>
+        <div id="views-container">
+
+          <!-- ============ AGENDA (construida y conectada) ============ -->
+          <section class="view" id="view-agenda">
+            <div class="agenda-toolbar">
+              <div class="agenda-nav">
+                <button class="agenda-nav-btn" id="agenda-prev" aria-label="Día anterior">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <div class="agenda-fecha">
+                  <span id="agenda-fecha-label">Cargando…</span>
+                  <button class="agenda-hoy-btn" id="agenda-hoy" style="display:none;">Hoy</button>
+                </div>
+                <button class="agenda-nav-btn" id="agenda-next" aria-label="Día siguiente">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+              <button class="deriv-refresh" id="agenda-refresh" title="Actualizar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+              </button>
+            </div>
+
+            <div id="agenda-loading" class="deriv-status">Cargando agenda…</div>
+            <div id="agenda-error" class="deriv-status deriv-status-error" style="display:none;">
+              No se ha podido conectar con el servidor. <button id="agenda-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+            <div id="agenda-empty" class="empty-state" style="display:none;">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>
+              </div>
+              <h2>Sin citas este día</h2>
+              <p>Cuando se reserve, cancele o modifique una cita, este día se actualiza solo al refrescar.</p>
+            </div>
+
+            <div id="agenda-list" class="agenda-list"></div>
+          </section>
+
+          <!-- ============ DERIVACIONES (construida y conectada) ============ -->
+          <section class="view" id="view-derivaciones">
+            <div class="deriv-toolbar">
+              <div class="pill-filter" id="deriv-filter">
+                <button class="pill active" data-filter="pendientes">Pendientes</button>
+                <button class="pill" data-filter="todas">Todas</button>
+              </div>
+              <button class="deriv-refresh" id="deriv-refresh" title="Actualizar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+              </button>
+            </div>
+
+            <div id="deriv-loading" class="deriv-status">Cargando derivaciones…</div>
+            <div id="deriv-error" class="deriv-status deriv-status-error" style="display:none;">
+              No se ha podido conectar con el servidor. <button id="deriv-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+            <div id="deriv-empty" class="empty-state" style="display:none;">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17.5" r=".8" fill="currentColor" stroke="none"/></svg>
+              </div>
+              <h2>Sin derivaciones pendientes</h2>
+              <p>Cuando el bot no pueda resolver algo solo (queja, dolor, duda sobre patología) aparecerá aquí al instante.</p>
+
+            </div>
+
+            <div id="deriv-list" class="deriv-list"></div>
+          </section>
+
+          <!-- ============ SERVICIOS (construida y conectada) ============ -->
+          <section class="view" id="view-servicios">
+            <div class="serv-toolbar">
+              <button class="deriv-refresh" id="servicios-refresh" title="Actualizar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+              </button>
+            </div>
+
+            <div id="servicios-loading" class="deriv-status">Cargando servicios…</div>
+            <div id="servicios-error" class="deriv-status deriv-status-error" style="display:none;">
+              No se ha podido conectar con el servidor. <button id="servicios-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+            <div id="servicios-empty" class="empty-state" style="display:none;">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9z"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+              </div>
+              <h2>Sin servicios dados de alta</h2>
+              <p>Los servicios que se creen en la base de datos aparecerán aquí para editar precio, duración y estado.</p>
+            </div>
+
+            <div class="serv-table-wrap" id="servicios-table" style="display:none;">
+              <table class="serv-table">
+                <thead>
+                  <tr>
+                    <th>Servicio</th>
+                    <th>Duración</th>
+                    <th>Precio</th>
+                    <th>Activo</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="servicios-list"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ============ EQUIPO Y HORAS (construida y conectada) ============ -->
+          <section class="view" id="view-equipo">
+            <div class="agenda-toolbar">
+              <div class="agenda-nav">
+                <button class="agenda-nav-btn" id="equipo-prev" aria-label="Semana anterior">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <div class="agenda-fecha">
+                  <span id="equipo-semana-label">Cargando…</span>
+                  <button class="agenda-hoy-btn" id="equipo-hoy" style="display:none;">Esta semana</button>
+                </div>
+                <button class="agenda-nav-btn" id="equipo-next" aria-label="Semana siguiente">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+              <button class="deriv-refresh" id="equipo-refresh" title="Actualizar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+              </button>
+            </div>
+
+            <div id="equipo-loading" class="deriv-status">Cargando equipo…</div>
+            <div id="equipo-error" class="deriv-status deriv-status-error" style="display:none;">
+              No se ha podido conectar con el servidor. <button id="equipo-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+            <div id="equipo-empty" class="empty-state" style="display:none;">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9.5" r="2.5"/><path d="M2 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/><path d="M16 20v-.5a3.5 3.5 0 0 1 3.5-3.5H20a2 2 0 0 1 2 2V20"/></svg>
+              </div>
+              <h2>Sin profesionales dados de alta</h2>
+              <p>Los profesionales que se creen en la base de datos aparecerán aquí para editar sus límites.</p>
+            </div>
+
+            <div class="serv-table-wrap" id="equipo-table" style="display:none;">
+              <table class="serv-table">
+                <thead>
+                  <tr>
+                    <th>Profesional</th>
+                    <th>Horas/semana</th>
+                    <th>Horas realizadas</th>
+                    <th>Máx sesiones seguidas</th>
+                    <th>Descanso mín (h)</th>
+                    <th>Descanso mediodía (min)</th>
+                    <th>Bot</th>
+                    <th>Difícil</th>
+                    <th>Activo</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="equipo-list"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ============ CONFIGURACIÓN (construida y conectada) ============ -->
+          <section class="view" id="view-config">
+            <div class="serv-toolbar">
+              <button class="deriv-refresh" id="config-refresh" title="Actualizar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+              </button>
+            </div>
+
+            <div id="config-loading" class="deriv-status">Cargando configuración…</div>
+            <div id="config-error" class="deriv-status deriv-status-error" style="display:none;">
+              No se ha podido conectar con el servidor. <button id="config-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+
+            <div class="config-form" id="config-form" style="display:none;">
+              <div class="config-field">
+                <label for="config-antelacion">Antelación mínima para reservar (horas)</label>
+                <input type="number" class="serv-input" id="config-antelacion" min="0" step="0.5">
+              </div>
+              <div class="config-field">
+                <label for="config-max-sesiones">Máximo de sesiones simultáneas en el centro</label>
+                <input type="number" class="serv-input" id="config-max-sesiones" min="1" step="1">
+              </div>
+              <div class="config-field">
+                <label>Franja cerrada todos los días</label>
+                <div class="config-field-row-inputs">
+                  <input type="time" class="serv-input serv-input-num" id="config-franja-inicio">
+                  <span>–</span>
+                  <input type="time" class="serv-input serv-input-num" id="config-franja-fin">
+                </div>
+              </div>
+              <div class="config-field">
+                <label for="config-pen-20-24">Penalización cancelación 20–24h antes (%)</label>
+                <input type="number" class="serv-input" id="config-pen-20-24" min="0" max="100" step="5">
+              </div>
+              <div class="config-field">
+                <label for="config-pen-0-20">Penalización cancelación menos de 20h antes (%)</label>
+                <input type="number" class="serv-input" id="config-pen-0-20" min="0" max="100" step="5">
+              </div>
+
+              <div class="config-actions">
+                <button class="serv-save-btn" id="config-guardar" disabled>Guardar cambios</button>
+                <span class="deriv-status-error" id="config-save-error" style="display:none;">No se ha podido guardar. Inténtalo de nuevo.</span>
+              </div>
+            </div>
+          </section>
+
+        </div>
       </div>
     </main>
   </div>
