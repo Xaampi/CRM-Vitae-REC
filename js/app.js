@@ -5,6 +5,23 @@
   const TOKEN_KEY = 'vitaerec_panel_token';
   const USER_KEY = 'vitaerec_panel_usuario';
 
+  // Validar sesión al cargar — endpoint pendiente de construir en n8n, mismo patrón
+  // que el resto (Code Extraer Token → Validar Sesión (Execute Workflow By ID) → IF).
+  // Contrato esperado:
+  //   GET panel-sesion  -> 200 { valido: true, usuario: "Sonia" } si el token existe
+  //                        en sesiones_panel y no ha caducado
+  //                     -> 401 si no existe, caducó o fue revocado
+  //        Header: Authorization: Bearer <token>
+  const SESION_API_URL = 'https://n8n.gorekia.com/webhook/panel-sesion';
+
+  // Logout — hoy solo borraba el token en localStorage; falta que también
+  // desaparezca de sesiones_panel para que quede realmente invalidado.
+  // Contrato esperado:
+  //   POST panel-logout -> 200 {ok:true}, DELETE de la fila en sesiones_panel
+  //        cuyo token coincide con el Authorization recibido.
+  //        Header: Authorization: Bearer <token>
+  const LOGOUT_API_URL = 'https://n8n.gorekia.com/webhook/panel-logout';
+
   // Derivaciones — endpoints pendientes de construir en n8n (mismo patrón que panel-login).
   // Contrato esperado:
   //   GET  panel-derivaciones            -> 200, array de:
@@ -58,6 +75,7 @@
   //   GET  panel-config  -> 200, objeto plano (no array, es un único conjunto de ajustes):
   //        { antelacion_minima_reserva_horas, max_sesiones_simultaneas,
   //          franja_condicional_inicio, franja_condicional_fin,
+  //          franja_condicional_dias_cerrados, // objeto {lunes:bool, martes:bool, ...}
   //          penalizacion_20_24h_porcentaje, penalizacion_0_20h_porcentaje }
   //        Header: Authorization: Bearer <token>
   //   POST panel-config  -> body ese mismo objeto con los campos editados,
@@ -67,7 +85,11 @@
   // están hardcodeadas como 20/24/50/100 directamente en el Code node de VR-Cancelar y
   // VR-Modificar — cambiarlas aquí actualiza config_centro pero NO afecta al bot todavía.
   // Falta reescribir esos Code nodes para que lean estos dos valores en vez de tenerlos fijos.
+  // PENDIENTE (mismo motivo): franja_condicional_dias_cerrados hay que confirmar si el motor
+  // de huecos de VR-Reserva ya lee franja_condicional_inicio/fin — si no lo hace, este toggle
+  // por día tampoco afectará al bot hasta que se cablee ahí también.
   const CONFIG_API_URL = 'https://n8n.gorekia.com/webhook/panel-config';
+  const DIAS_SEMANA = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'];
 
   // Vistas con su propio markup ya escrito en el HTML (no se generan como placeholder vacío)
   const CUSTOM_VIEWS = ['derivaciones', 'agenda', 'servicios', 'equipo', 'config'];
@@ -201,13 +223,28 @@
     document.getElementById('user-avatar').textContent = usuario.charAt(0).toUpperCase();
   }
 
-  // Si ya hay sesión guardada, entra directo (validación real de caducidad
-  // se hace en el primer webhook de datos que llamemos, no aquí)
-  const tokenGuardado = localStorage.getItem(TOKEN_KEY);
-  const usuarioGuardado = localStorage.getItem(USER_KEY);
-  if (tokenGuardado && usuarioGuardado) {
-    showApp(usuarioGuardado);
+  // Si hay una sesión guardada, se valida contra la BD antes de entrar —
+  // un token borrado o caducado en sesiones_panel ya no basta con estar en
+  // localStorage para acceder al panel. Mientras se comprueba, se queda en
+  // la pantalla de login; solo cambia a la app si el backend confirma que
+  // el token sigue siendo válido.
+  async function comprobarSesionGuardada() {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const usuario = localStorage.getItem(USER_KEY);
+    if (!token || !usuario) return;
+
+    try {
+      const res = await fetch(SESION_API_URL, {
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      if (!res.ok) throw new Error('sesión no válida');
+      showApp(usuario);
+    } catch (err) {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+    }
   }
+  comprobarSesionGuardada();
 
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -242,7 +279,21 @@
     }
   });
 
-  document.getElementById('logout-btn').addEventListener('click', () => {
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+
+    // Best-effort: borra el token en sesiones_panel. Si falla (sin red,
+    // servidor caído) el logout local sigue igualmente — nunca dejamos a
+    // Sonia atrapada dentro del panel por un error de conexión.
+    try {
+      await fetch(LOGOUT_API_URL, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token }
+      });
+    } catch (err) {
+      // sin conexión o servidor caído — se ignora, el logout local basta
+    }
+
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     app.classList.remove('active');
@@ -873,6 +924,14 @@
     document.getElementById('config-franja-fin').value = cfg.franja_condicional_fin;
     document.getElementById('config-pen-20-24').value = cfg.penalizacion_20_24h_porcentaje;
     document.getElementById('config-pen-0-20').value = cfg.penalizacion_0_20h_porcentaje;
+
+    // Si la clave todavía no existe en config_centro (primera carga tras este cambio),
+    // por defecto cerrado todos los días — mismo comportamiento que había hasta ahora.
+    const diasCerrados = cfg.franja_condicional_dias_cerrados || {};
+    DIAS_SEMANA.forEach(dia => {
+      const marcado = diasCerrados.hasOwnProperty(dia) ? !!diasCerrados[dia] : true;
+      document.getElementById('config-dia-' + dia).checked = marcado;
+    });
   }
 
   async function configCargar() {
@@ -911,11 +970,17 @@
     const saveError = document.getElementById('config-save-error');
     saveError.style.display = 'none';
 
+    const diasCerrados = {};
+    DIAS_SEMANA.forEach(dia => {
+      diasCerrados[dia] = document.getElementById('config-dia-' + dia).checked;
+    });
+
     const actualizado = {
       antelacion_minima_reserva_horas: Number(document.getElementById('config-antelacion').value),
       max_sesiones_simultaneas: Number(document.getElementById('config-max-sesiones').value),
       franja_condicional_inicio: document.getElementById('config-franja-inicio').value,
       franja_condicional_fin: document.getElementById('config-franja-fin').value,
+      franja_condicional_dias_cerrados: diasCerrados,
       penalizacion_20_24h_porcentaje: Number(document.getElementById('config-pen-20-24').value),
       penalizacion_0_20h_porcentaje: Number(document.getElementById('config-pen-0-20').value)
     };
