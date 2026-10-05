@@ -189,6 +189,181 @@
             <div id="deriv-list" class="deriv-list"></div>
           </section>
 
+          <!-- ============ CLIENTES (listado y buscador; ficha y alta en las siguientes entregas) ============ -->
+          <section class="view" id="view-clientes">
+            <div class="deriv-toolbar">
+              <div class="cli-toolbar-left">
+                <div class="cli-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+                  <input type="search" id="clientes-search" placeholder="Buscar por nombre o teléfono" autocomplete="off" aria-label="Buscar cliente">
+                </div>
+                <div class="pill-filter" id="clientes-filter">
+                  <button class="pill active" data-filter="activos">Activos</button>
+                  <button class="pill" data-filter="todos">Todos</button>
+                </div>
+                <span class="cli-count" id="clientes-count"></span>
+              </div>
+              <div class="cli-toolbar-right">
+                <button class="cli-new-btn" id="clientes-nuevo" type="button">+ Nuevo cliente</button>
+                <button class="deriv-refresh" id="clientes-refresh" title="Actualizar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div id="clientes-loading" class="deriv-status">Cargando clientes…</div>
+            <div id="clientes-error" class="deriv-status deriv-status-error" style="display:none;">
+              No se ha podido conectar con el servidor. <button id="clientes-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+            <div id="clientes-empty" class="empty-state" style="display:none;">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3.5"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <h2 id="clientes-empty-titulo">Sin clientes dados de alta</h2>
+              <p id="clientes-empty-texto">Los clientes que se registren por el bot o a mano aparecerán aquí.</p>
+            </div>
+
+            <div class="serv-table-wrap" id="clientes-table" style="display:none;">
+              <table class="serv-table">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Teléfono</th>
+                    <th>Tutor</th>
+                    <th>Etiquetas</th>
+                    <th>LOPD</th>
+                  </tr>
+                </thead>
+                <tbody id="clientes-list"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ============ BONOS (listado, ficha y alta) ============ -->
+          <section class="view" id="view-bonos">
+            <div class="deriv-toolbar">
+              <div class="cli-toolbar-left">
+                <div class="cli-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+                  <input type="search" id="bonos-search" placeholder="Buscar por cliente, teléfono o tipo de bono" autocomplete="off" aria-label="Buscar bono">
+                </div>
+                <div class="pill-filter" id="bonos-filter">
+                  <button class="pill active" data-filter="activos">Activos</button>
+                  <button class="pill" data-filter="todos">Todos</button>
+                </div>
+                <span class="cli-count" id="bonos-count"></span>
+              </div>
+              <div class="cli-toolbar-right">
+                <button class="cli-new-btn" id="bonos-nuevo" type="button">+ Nuevo bono</button>
+                <button class="deriv-refresh" id="bonos-refresh" title="Actualizar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div id="bonos-loading" class="deriv-status">Cargando bonos…</div>
+            <div id="bonos-error" class="deriv-status deriv-status-error" style="display:none;">
+              No se ha podido conectar con el servidor. <button id="bonos-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+            <div id="bonos-empty" class="empty-state" style="display:none;">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8z"/><line x1="12" y1="7" x2="12" y2="9"/><line x1="12" y1="11" x2="12" y2="13"/><line x1="12" y1="15" x2="12" y2="17"/></svg>
+              </div>
+              <h2 id="bonos-empty-titulo">Sin bonos dados de alta</h2>
+              <p id="bonos-empty-texto">Los bonos que des de alta aparecerán aquí.</p>
+            </div>
+
+            <div class="serv-table-wrap" id="bonos-table" style="display:none;">
+              <table class="serv-table">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Bono</th>
+                    <th>Sesiones</th>
+                    <th>Inicio</th>
+                    <th>Caducidad</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="bonos-list"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ============ COBROS (pagos, totales y pendientes) ============ -->
+          <section class="view" id="view-cobros">
+            <div class="deriv-toolbar">
+              <div class="cli-toolbar-left">
+                <div class="pill-filter" id="cobros-tabs">
+                  <button class="pill active" data-tab="pagos">Pagos</button>
+                  <button class="pill" data-tab="pendientes">Pendientes</button>
+                </div>
+                <div class="cli-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+                  <input type="search" id="cobros-search" placeholder="Buscar por cliente o teléfono" autocomplete="off" aria-label="Buscar en cobros">
+                </div>
+                <span class="cli-count" id="cobros-count"></span>
+              </div>
+              <div class="cli-toolbar-right">
+                <button class="deriv-refresh" id="cobros-refresh" title="Actualizar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div id="cobros-loading" class="deriv-status">Cargando cobros…</div>
+            <div id="cobros-error" class="deriv-status deriv-status-error" style="display:none;">
+              <span id="cobros-error-texto">No se ha podido conectar con el servidor.</span> <button id="cobros-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+
+            <!-- Pestaña Pagos -->
+            <div id="cobros-pagos-panel">
+              <div class="cb-filtros">
+                <label>Desde <input type="date" class="serv-input" id="cobros-desde"></label>
+                <label>Hasta <input type="date" class="serv-input" id="cobros-hasta"></label>
+                <label>Método
+                  <select class="serv-input" id="cobros-metodo">
+                    <option value="">Todos</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="bizum">Bizum</option>
+                  </select>
+                </label>
+                <label class="cb-check"><input type="checkbox" id="cobros-anulados"> Ver también los anulados</label>
+              </div>
+              <div class="cb-totales" id="cobros-totales"></div>
+              <div id="cobros-pagos-empty" class="empty-state" style="display:none;">
+                <div class="empty-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6"/><circle cx="17" cy="14" r="1.5"/></svg>
+                </div>
+                <h2>Sin pagos en este periodo</h2>
+                <p>Los pagos que registres desde «Pendientes» aparecerán aquí.</p>
+              </div>
+              <div class="serv-table-wrap" id="cobros-pagos-table" style="display:none;">
+                <table class="serv-table">
+                  <thead>
+                    <tr><th>Fecha</th><th>Cliente</th><th>Concepto</th><th>Método</th><th class="cb-num">Importe</th><th></th></tr>
+                  </thead>
+                  <tbody id="cobros-pagos-list"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Pestaña Pendientes -->
+            <div id="cobros-pend-panel" style="display:none;">
+              <div class="cb-totales" id="cobros-pend-resumen"></div>
+              <div id="cobros-pend-avisos"></div>
+              <div id="cobros-pend-empty" class="empty-state" style="display:none;">
+                <div class="empty-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <h2 id="cobros-pend-empty-titulo">Todo al día</h2>
+                <p id="cobros-pend-empty-texto">No hay nada pendiente de cobro.</p>
+              </div>
+              <div id="cobros-pend-secciones"></div>
+            </div>
+          </section>
+
           <!-- ============ SERVICIOS (construida y conectada) ============ -->
           <section class="view" id="view-servicios">
             <div class="serv-toolbar">
@@ -336,6 +511,56 @@
       </div>
     </main>
   </div>
+
+<!-- Ficha / alta de bono: panel lateral (se rellena desde js/app.js).
+     Va ANTES que la ficha de cliente en el DOM y con z-index menor: si se abre un cliente desde un bono, queda por encima. -->
+<div class="bo-drawer-backdrop" id="bo-drawer-backdrop"></div>
+<aside class="bo-drawer" id="bo-drawer" role="dialog" aria-modal="true" aria-labelledby="bo-drawer-titulo" aria-hidden="true">
+  <header class="cli-drawer-head">
+    <h2 id="bo-drawer-titulo">Bono</h2>
+    <button type="button" class="cli-drawer-close" id="bo-drawer-cerrar" aria-label="Cerrar bono">&times;</button>
+  </header>
+  <div class="cli-drawer-body" id="bo-drawer-body"></div>
+  <footer class="cli-drawer-foot" id="bo-drawer-foot" style="display:none;">
+    <p class="cli-form-msg" id="bo-form-msg" role="alert"></p>
+    <div class="cli-foot-btns">
+      <button type="button" class="cli-btn-del" id="bo-form-eliminar" style="display:none;">Eliminar bono</button>
+      <button type="button" class="cli-btn-sec" id="bo-form-cancelar">Cerrar</button>
+      <button type="button" class="cli-btn-pri" id="bo-form-guardar" disabled>Guardar cambios</button>
+    </div>
+  </footer>
+</aside>
+
+<!-- Ficha de cliente: panel lateral (se rellena desde js/app.js) -->
+<div class="cli-drawer-backdrop" id="cli-drawer-backdrop"></div>
+<aside class="cli-drawer" id="cli-drawer" role="dialog" aria-modal="true" aria-labelledby="cli-drawer-titulo" aria-hidden="true">
+  <header class="cli-drawer-head">
+    <h2 id="cli-drawer-titulo">Ficha del cliente</h2>
+    <button type="button" class="cli-drawer-close" id="cli-drawer-cerrar" aria-label="Cerrar ficha">&times;</button>
+  </header>
+  <div class="cli-drawer-body" id="cli-drawer-body"></div>
+  <footer class="cli-drawer-foot" id="cli-drawer-foot" style="display:none;">
+    <p class="cli-form-msg" id="cli-form-msg" role="alert"></p>
+    <div class="cli-foot-btns">
+      <button type="button" class="cli-btn-del" id="cli-form-eliminar" style="display:none;">Eliminar cliente</button>
+      <button type="button" class="cli-btn-sec" id="cli-form-cancelar">Cerrar</button>
+      <button type="button" class="cli-btn-pri" id="cli-form-guardar" disabled>Guardar cambios</button>
+    </div>
+  </footer>
+</aside>
+
+<!-- Ventana de Cobros: registrar pago / ajustar precio / anular pago (se rellena desde js/app.js) -->
+<div class="cb-modal-backdrop" id="cb-modal" aria-hidden="true">
+  <div class="cb-modal" role="dialog" aria-modal="true" aria-labelledby="cb-modal-titulo">
+    <h3 id="cb-modal-titulo">Cobro</h3>
+    <div id="cb-modal-body"></div>
+    <p class="cli-form-msg" id="cb-modal-msg" role="alert"></p>
+    <div class="cb-modal-btns">
+      <button type="button" class="cli-btn-sec" id="cb-modal-cancelar">Cancelar</button>
+      <button type="button" class="cli-btn-pri" id="cb-modal-ok">Guardar</button>
+    </div>
+  </div>
+</div>
 
 <script src="js/app.js"></script>
 
