@@ -573,3 +573,19 @@
   .cli-pago.is-anulado strong{text-decoration:line-through;}
   .cli-pago strong{font-variant-numeric:tabular-nums;white-space:nowrap;}
   @media (max-width:700px){ .cb-filtros .serv-input{min-width:0;width:100%;} .cb-filtros label{flex:1 1 140px;} }
+
+  /* ---------- Cancelaciones y Modificaciones ---------- */
+  .pn-badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:4px;border-radius:999px;background:rgba(0,0,0,.08);font-size:11px;line-height:18px;text-align:center;font-variant-numeric:tabular-nums;}
+  .pill.active .pn-badge{background:rgba(255,255,255,.22);}
+  .pn-badge.is-aviso{background:var(--amber-bg);color:var(--amber);}
+  .pill.active .pn-badge.is-aviso{background:var(--amber);color:#fff;}
+  .pn-tipo,.pn-estado{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;background:#EEF0F3;color:var(--text-muted);}
+  .pn-tipo-cancelacion{background:var(--pink-light);color:var(--pink-dark);}
+  .pn-tipo-modificacion{background:#E8F0FE;color:#2B59C3;}
+  .pn-tipo-no_show{background:var(--amber-bg);color:var(--amber);}
+  .pn-estado-sin_importe{background:var(--amber-bg);color:var(--amber);}
+  .pn-estado-por_cobrar{background:var(--pink-light);color:var(--pink-dark);}
+  .pn-estado-pagada{background:#E4F5EA;color:#1E7B3E;}
+  .pn-condonada td{opacity:.6;}
+  .pn-condonada td:last-child{opacity:1;}
+  .cb-link-aviso{text-decoration:underline;margin-left:6px;}

@@ -81,6 +81,10 @@
           <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6"/><circle cx="17" cy="14" r="1.5"/></svg></span>
           <span class="nav-label">Cobros</span>
                 </button>
+        <button class="nav-item" data-view="penalizaciones">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9.5" y1="13.5" x2="14.5" y2="18.5"/><line x1="14.5" y1="13.5" x2="9.5" y2="18.5"/></svg></span>
+          <span class="nav-label">Cancelaciones</span>
+                </button>
         <button class="nav-item" data-view="equipo">
           <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9.5" r="2.5"/><path d="M2 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1"/><path d="M16 20v-.5a3.5 3.5 0 0 1 3.5-3.5H20a2 2 0 0 1 2 2V20"/></svg></span>
           <span class="nav-label">Equipo y horas</span>
@@ -364,6 +368,66 @@
             </div>
           </section>
 
+          <!-- ============ CANCELACIONES Y MODIFICACIONES (penalizaciones) ============ -->
+          <section class="view" id="view-penalizaciones">
+            <div class="deriv-toolbar">
+              <div class="cli-toolbar-left">
+                <div class="pill-filter" id="pen-tabs">
+                  <button class="pill active" data-tab="sin_importe">Sin importe</button>
+                  <button class="pill" data-tab="por_cobrar">Por cobrar</button>
+                  <button class="pill" data-tab="condonadas">Condonadas</button>
+                  <button class="pill" data-tab="todas">Todas</button>
+                </div>
+                <div class="cli-search">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+                  <input type="search" id="pen-search" placeholder="Buscar por cliente o teléfono" autocomplete="off" aria-label="Buscar penalizaciones">
+                </div>
+                <span class="cli-count" id="pen-count"></span>
+              </div>
+              <div class="cli-toolbar-right">
+                <button class="deriv-refresh" id="pen-refresh" title="Actualizar">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div id="pen-loading" class="deriv-status">Cargando penalizaciones…</div>
+            <div id="pen-error" class="deriv-status deriv-status-error" style="display:none;">
+              <span id="pen-error-texto">No se ha podido conectar con el servidor.</span> <button id="pen-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+
+            <div id="pen-panel" style="display:none;">
+              <div class="cb-totales" id="pen-resumen"></div>
+              <div class="cb-filtros">
+                <label>Tipo
+                  <select class="serv-input" id="pen-origen">
+                    <option value="">Todos</option>
+                    <option value="cancelacion">Cancelación</option>
+                    <option value="modificacion">Modificación</option>
+                    <option value="no_show">No se presentó</option>
+                  </select>
+                </label>
+                <label>Cita desde <input type="date" class="serv-input" id="pen-desde"></label>
+                <label>Cita hasta <input type="date" class="serv-input" id="pen-hasta"></label>
+              </div>
+              <div id="pen-empty" class="empty-state" style="display:none;">
+                <div class="empty-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                </div>
+                <h2 id="pen-empty-titulo">Todo al día</h2>
+                <p id="pen-empty-texto">No hay penalizaciones pendientes de importe.</p>
+              </div>
+              <div class="serv-table-wrap" id="pen-table" style="display:none;">
+                <table class="serv-table">
+                  <thead>
+                    <tr><th>Cliente</th><th>Tipo y cita</th><th class="cb-num">%</th><th class="cb-num">Importe</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody id="pen-list"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
           <!-- ============ SERVICIOS (construida y conectada) ============ -->
           <section class="view" id="view-servicios">
             <div class="serv-toolbar">
@@ -558,6 +622,19 @@
     <div class="cb-modal-btns">
       <button type="button" class="cli-btn-sec" id="cb-modal-cancelar">Cancelar</button>
       <button type="button" class="cli-btn-pri" id="cb-modal-ok">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ventana de Cancelaciones y Modificaciones: fijar importe / condonar (se rellena desde js/app.js) -->
+<div class="cb-modal-backdrop" id="pn-modal" aria-hidden="true">
+  <div class="cb-modal" role="dialog" aria-modal="true" aria-labelledby="pn-modal-titulo">
+    <h3 id="pn-modal-titulo">Penalización</h3>
+    <div id="pn-modal-body"></div>
+    <p class="cli-form-msg" id="pn-modal-msg" role="alert"></p>
+    <div class="cb-modal-btns">
+      <button type="button" class="cli-btn-sec" id="pn-modal-cancelar">Cancelar</button>
+      <button type="button" class="cli-btn-pri" id="pn-modal-ok">Guardar</button>
     </div>
   </div>
 </div>

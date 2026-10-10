@@ -143,7 +143,7 @@
   const CLIENTES_DOC_ELIMINAR_URL = 'https://n8n.gorekia.com/webhook/panel-clientes-doc-eliminar';
 
   // Vistas con su propio markup ya escrito en el HTML (no se generan como placeholder vacío)
-  const CUSTOM_VIEWS = ['derivaciones', 'agenda', 'clientes', 'bonos', 'cobros', 'servicios', 'equipo', 'config'];
+  const CUSTOM_VIEWS = ['derivaciones', 'agenda', 'clientes', 'bonos', 'cobros', 'penalizaciones', 'servicios', 'equipo', 'config'];
 
   // Cada sección: icono (reutilizado del nav) + qué va a vivir aquí cuando se construya
   const VIEWS = {
@@ -176,6 +176,11 @@
       title: 'Cobros',
       icon: '<path d="M20 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h15a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6"/><circle cx="17" cy="14" r="1.5"/>',
       desc: 'Quién ha pagado, cómo y cuándo — sin depender de la memoria.'
+    },
+    penalizaciones: {
+      title: 'Cancelaciones y Modificaciones',
+      icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9.5" y1="13.5" x2="14.5" y2="18.5"/><line x1="14.5" y1="13.5" x2="9.5" y2="18.5"/>',
+      desc: 'Las penalizaciones por cancelar o cambiar una cita con poca antelación: fija el importe o condónalas.'
     },
     equipo: {
       title: 'Equipo y horas',
@@ -233,6 +238,7 @@
       if (view === 'clientes') clientesCargar();
       if (view === 'bonos') bonosCargar();
       if (view === 'cobros') cobrosCargar();
+      if (view === 'penalizaciones') penCargar();
       if (view === 'servicios') servCargar();
       if (view === 'equipo') equipoCargar();
       if (view === 'config') configCargar();
@@ -2961,7 +2967,7 @@
       <div class="cb-total"><span>Sesiones sueltas</span><strong>${(d.sesiones || []).length}</strong></div>
       <div class="cb-total"><span>Penalizaciones</span><strong>${(d.penalizaciones || []).length}</strong></div>`;
     document.getElementById('cobros-pend-avisos').innerHTML = sinImporte
-      ? `<div class="cb-aviso">${sinImporte === 1 ? 'Hay 1 penalización' : `Hay ${sinImporte} penalizaciones`} sin importe. No se pueden cobrar hasta que se fije el importe (o se condone) en «Cancelaciones y Modificaciones».</div>` : '';
+      ? `<div class="cb-aviso">${sinImporte === 1 ? 'Hay 1 penalización' : `Hay ${sinImporte} penalizaciones`} sin importe. No se pueden cobrar hasta que se fije el importe (o se condone) en «Cancelaciones y Modificaciones». <button type="button" class="cb-link cb-link-aviso" data-cb-ir-pen>Ir a fijarlos</button></div>` : '';
 
     const total = bonos.length + sesiones.length + pens.length;
     const vacio = document.getElementById('cobros-pend-empty');
@@ -3245,6 +3251,7 @@
     if ((el = t('[data-cb-quitar-gratis]'))) return cbGratis(el.dataset.cbQuitarGratis, false);
     if ((el = t('[data-cb-anular]'))) return cbAbrirAnular(Number(el.dataset.cbAnular));
     if ((el = t('[data-cb-cliente]'))) return cliAbrirFicha(Number(el.dataset.cbCliente), 'editar');
+    if (t('[data-cb-ir-pen]')) return document.querySelector('.nav-item[data-view="penalizaciones"]').click();
   });
 
   // ---------- Sección «Pagos» de la ficha de cliente (solo lectura). La llama cliRenderFormulario ----------
@@ -3266,3 +3273,320 @@
         <p class="bo-ayuda">Los pagos se registran desde la pantalla Cobros. Se muestran los últimos 100.</p>
       </section>`;
   }
+
+
+  // ============================================================
+  // CANCELACIONES Y MODIFICACIONES — penalizaciones (workflow n8n `CRM PENALIZACIONES`)
+  // ============================================================
+  // Aquí llegan las penalizaciones que crean el bot (cancelar / modificar una cita) y «No se presentó» (Agenda).
+  // Sonia fija el importe en euros (o condona); una vez fijado, se cobra desde la pantalla Cobros.
+  // Contrato (todas llevan Header: Authorization: Bearer <token>; las POST, Content-Type JSON):
+  //   GET  panel-penalizaciones?q=&ver=sin_importe|por_cobrar|pagadas|condonadas|todas&origen=cancelacion|modificacion|no_show&desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+  //        (desde/hasta sobre la fecha de la cita; vacío = sin límite)
+  //        -> { ok: true,
+  //             resumen: { sin_importe, por_cobrar, pagadas, condonadas, todas, total_por_cobrar },   // siempre de TODAS, sin filtros
+  //             penalizaciones: [{ id, cliente_id, cliente_nombre, cliente_apellidos|null, cliente_telefono,
+  //                                origen: 'cancelacion'|'modificacion'|'no_show', porcentaje, cita_id|null,
+  //                                fecha_cita|null, hora_cita|null, cita_estado|null, servicio|null, de_bono,
+  //                                importe|null, pagado, pendiente|null, importe_sugerido|null, base_texto|null,
+  //                                situacion: 'sin_importe'|'por_cobrar'|'pagada'|'condonada'|'otra',
+  //                                condonada_nombre|null, condonada_en|null, condonada_motivo|null, creada_en }] }   // máx. 500
+  //           | { ok: false, error, mensaje }
+  //   POST panel-penalizaciones-importe   body { id, importe ('45,50'; '' = quitar el importe) }  -> { ok: true, id, importe|null, pendiente|null } | { ok: false, error, mensaje }
+  //   POST panel-penalizaciones-condonar  body { id, motivo?, por? }                              -> { ok: true, id } | { ok: false, error, mensaje }
+  //   POST panel-penalizaciones-reactivar body { id }                                             -> { ok: true, id } | { ok: false, error, mensaje }
+  //   `mensaje` es apto para enseñar tal cual. El importe sugerido nunca se guarda solo: se rellena en la ventana y Sonia lo confirma.
+  const PEN_API_URL = 'https://n8n.gorekia.com/webhook/panel-penalizaciones';
+  const PEN_IMPORTE_URL = 'https://n8n.gorekia.com/webhook/panel-penalizaciones-importe';
+  const PEN_CONDONAR_URL = 'https://n8n.gorekia.com/webhook/panel-penalizaciones-condonar';
+  const PEN_REACTIVAR_URL = 'https://n8n.gorekia.com/webhook/panel-penalizaciones-reactivar';
+
+  const PEN_ORIGEN = { cancelacion: 'Cancelación', modificacion: 'Modificación', no_show: 'No se presentó' };
+  const PEN_SITUACION = { sin_importe: 'Sin importe', por_cobrar: 'Por cobrar', pagada: 'Pagada', condonada: 'Condonada', otra: 'Otra' };
+  const PEN_TABS = { sin_importe: 'Sin importe', por_cobrar: 'Por cobrar', condonadas: 'Condonadas', todas: 'Todas' };
+
+  let penTab = 'sin_importe';
+  let penDatos = null;
+  let penBusqueda = '';
+  let penPeticion = 0;
+  let penTimer = null;
+  let penModal = null; // { tipo: 'importe'|'condonar', id }
+
+  function penEstado(modo, texto) { // 'loading' | 'error' | 'ok'
+    document.getElementById('pen-loading').style.display = modo === 'loading' ? 'block' : 'none';
+    document.getElementById('pen-error').style.display = modo === 'error' ? 'block' : 'none';
+    if (modo === 'error') document.getElementById('pen-error-texto').textContent = texto || 'No se ha podido conectar con el servidor.';
+    document.getElementById('pen-panel').style.display = modo === 'ok' ? '' : 'none';
+    if (modo !== 'ok') document.getElementById('pen-count').textContent = '';
+  }
+
+  function penFechaCita(p) {
+    return p.fecha_cita ? `${boFecha(p.fecha_cita)} ${String(p.hora_cita || '').slice(0, 5)}` : 'Sin cita asociada';
+  }
+
+  function penRender() {
+    const d = penDatos;
+    const r = d.resumen || {};
+    // Pestañas con su contador
+    document.querySelectorAll('#pen-tabs .pill').forEach(pill => {
+      const n = Number(r[pill.dataset.tab]) || 0;
+      pill.innerHTML = `${cliEsc(PEN_TABS[pill.dataset.tab])} <span class="pn-badge${pill.dataset.tab === 'sin_importe' && n > 0 ? ' is-aviso' : ''}">${n}</span>`;
+    });
+    document.getElementById('pen-resumen').innerHTML = `
+      <div class="cb-total${Number(r.sin_importe) > 0 ? ' is-aviso' : ''}"><span>Sin importe</span><strong>${Number(r.sin_importe) || 0}</strong></div>
+      <div class="cb-total is-principal"><span>Pendiente de cobro</span><strong>${cbEur(r.total_por_cobrar)}</strong></div>
+      <div class="cb-total"><span>Por cobrar</span><strong>${Number(r.por_cobrar) || 0}</strong></div>
+      <div class="cb-total"><span>Condonadas</span><strong>${Number(r.condonadas) || 0}</strong></div>`;
+
+    const lista = Array.isArray(d.penalizaciones) ? d.penalizaciones : [];
+    const hayFiltro = !!(penBusqueda || document.getElementById('pen-origen').value ||
+                         document.getElementById('pen-desde').value || document.getElementById('pen-hasta').value);
+    document.getElementById('pen-count').textContent = lista.length === 500 ? '500+ (acota los filtros)' : (lista.length === 1 ? '1 penalización' : `${lista.length} penalizaciones`);
+    const vacio = document.getElementById('pen-empty');
+    const tabla = document.getElementById('pen-table');
+    if (!lista.length) {
+      tabla.style.display = 'none';
+      vacio.style.display = 'block';
+      const t = { sin_importe: ['Todo al día', 'No hay penalizaciones pendientes de importe.'],
+                  por_cobrar: ['Nada por cobrar', 'No hay penalizaciones con importe pendientes de cobro.'],
+                  condonadas: ['Sin condonadas', 'Todavía no se ha condonado ninguna penalización.'],
+                  todas: ['Sin penalizaciones', 'Cuando un cliente cancele o cambie su cita con poca antelación, aparecerá aquí.'] }[penTab];
+      document.getElementById('pen-empty-titulo').textContent = hayFiltro ? 'Sin resultados' : t[0];
+      document.getElementById('pen-empty-texto').textContent = hayFiltro ? 'No hay penalizaciones que coincidan con los filtros.' : t[1];
+      return;
+    }
+    vacio.style.display = 'none';
+    document.getElementById('pen-list').innerHTML = lista.map(p => {
+      const sit = PEN_SITUACION[p.situacion] ? p.situacion : 'otra';
+      let importe;
+      if (p.importe != null) {
+        importe = `<strong>${cbEur(p.importe)}</strong>${Number(p.pagado) > 0 ? `<span class="cb-sub">Pagado ${cbEur(p.pagado)}</span>` : ''}`;
+      } else {
+        importe = '<span class="cb-sub">—</span>' + (p.importe_sugerido != null ? `<span class="cb-sub">Sugerido ${cbEur(p.importe_sugerido)}</span>` : '');
+      }
+      let sub = '';
+      if (sit === 'condonada') {
+        const quien = [p.condonada_nombre ? `por ${p.condonada_nombre}` : '', p.condonada_en ? boFecha(p.condonada_en) : ''].filter(Boolean).join(' · ');
+        sub = (quien ? `<span class="cb-sub">${cliEsc(quien)}</span>` : '') + (p.condonada_motivo ? `<span class="cb-sub">${cliEsc(p.condonada_motivo)}</span>` : '');
+      } else if (sit === 'por_cobrar') {
+        sub = `<span class="cb-sub">Falta ${cbEur(p.pendiente)}</span>`;
+      }
+      let acc = '';
+      if (sit === 'sin_importe') {
+        acc = `<button type="button" class="cb-btn is-pri" data-pen-importe="${Number(p.id)}">Fijar importe</button>
+               <button type="button" class="cb-btn" data-pen-condonar="${Number(p.id)}">Condonar</button>`;
+      } else if (sit === 'por_cobrar' || sit === 'pagada') {
+        acc = `<button type="button" class="cb-btn" data-pen-importe="${Number(p.id)}">Cambiar importe</button>
+               ${sit === 'por_cobrar' ? `<button type="button" class="cb-btn" data-pen-condonar="${Number(p.id)}">Condonar</button>` : ''}`;
+      } else if (sit === 'condonada') {
+        acc = `<button type="button" class="cb-btn" data-pen-reactivar="${Number(p.id)}">Reactivar</button>`;
+      }
+      return `<tr class="${sit === 'condonada' ? 'pn-condonada' : ''}">
+        <td class="cli-nombre"><button type="button" class="cb-link" data-pen-cliente="${Number(p.cliente_id)}">${cliEsc(cbNombre(p))}</button>
+          <span class="bo-cliente-tel">${cliEsc(cliFormatearTelefono(p.cliente_telefono))}</span></td>
+        <td><span class="pn-tipo pn-tipo-${cliEsc(p.origen)}">${cliEsc(PEN_ORIGEN[p.origen] || p.origen)}</span>
+          <span class="cb-sub">${cliEsc(p.servicio || '')}${p.servicio ? ' · ' : ''}${cliEsc(penFechaCita(p))}${p.de_bono ? ' · bono' : ''}</span></td>
+        <td class="cb-num">${Number(p.porcentaje) || 0} %</td>
+        <td class="cb-num">${importe}</td>
+        <td><span class="pn-estado pn-estado-${sit}">${cliEsc(PEN_SITUACION[sit])}</span>${sub}</td>
+        <td><div class="cb-acciones">${acc}</div></td>
+      </tr>`;
+    }).join('');
+    tabla.style.display = '';
+  }
+
+  async function penCargar(silencioso) {
+    const peticion = ++penPeticion;
+    const refresh = document.getElementById('pen-refresh');
+    refresh.classList.add('spinning');
+    if (!silencioso) penEstado('loading');
+    const par = new URLSearchParams();
+    par.set('q', penBusqueda);
+    par.set('ver', penTab);
+    par.set('origen', document.getElementById('pen-origen').value);
+    const desde = document.getElementById('pen-desde').value;
+    const hasta = document.getElementById('pen-hasta').value;
+    if (desde) par.set('desde', desde);
+    if (hasta) par.set('hasta', hasta);
+    try {
+      const datos = await boGet(`${PEN_API_URL}?${par.toString()}`);
+      if (peticion !== penPeticion) return;
+      if (!datos || datos.ok !== true) {
+        penEstado('error', (datos && datos.mensaje) || 'No se han podido cargar las penalizaciones.');
+        return;
+      }
+      penDatos = datos;
+      penEstado('ok');
+      penRender();
+    } catch (err) {
+      if (peticion !== penPeticion) return;
+      penEstado('error');
+    } finally {
+      if (peticion === penPeticion) refresh.classList.remove('spinning');
+    }
+  }
+
+  // ---------- Eventos de la pantalla ----------
+  document.querySelectorAll('#pen-tabs .pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('#pen-tabs .pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      penTab = pill.dataset.tab;
+      penCargar();
+    });
+  });
+  document.getElementById('pen-search').addEventListener('input', (e) => {
+    penBusqueda = e.target.value.trim();
+    clearTimeout(penTimer);
+    penTimer = setTimeout(() => penCargar(true), 300);
+  });
+  ['pen-origen', 'pen-desde', 'pen-hasta'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => penCargar(true));
+  });
+  document.getElementById('pen-retry').addEventListener('click', () => penCargar());
+  document.getElementById('pen-refresh').addEventListener('click', () => penCargar());
+
+  // ---------- Ventana (fijar importe / condonar) ----------
+  function penModalMsg(texto, tipo) {
+    const el = document.getElementById('pn-modal-msg');
+    el.textContent = texto || '';
+    el.className = 'cli-form-msg' + (tipo ? ' is-' + tipo : '');
+  }
+  function penModalCampo(nombre) { return document.querySelector(`#pn-modal-body [data-pn="${nombre}"]`); }
+  function penMarcar(el) {
+    document.querySelectorAll('#pn-modal-body .cli-invalid').forEach(e => e.classList.remove('cli-invalid'));
+    if (el) { el.classList.add('cli-invalid'); el.focus(); }
+  }
+  function penCerrarModal() {
+    const m = document.getElementById('pn-modal');
+    m.classList.remove('open');
+    m.setAttribute('aria-hidden', 'true');
+    penModal = null;
+  }
+  function penAbrirModal(titulo, contexto, cuerpo, textoOk) {
+    document.getElementById('pn-modal-titulo').textContent = titulo;
+    document.getElementById('pn-modal-body').innerHTML = `<p class="cb-modal-ctx">${contexto}</p>${cuerpo}`;
+    const ok = document.getElementById('pn-modal-ok');
+    ok.textContent = textoOk; ok.disabled = false;
+    penModalMsg('');
+    const m = document.getElementById('pn-modal');
+    m.classList.add('open');
+    m.setAttribute('aria-hidden', 'false');
+    const primero = document.querySelector('#pn-modal-body input');
+    if (primero) { primero.focus(); if (primero.select) primero.select(); }
+  }
+  function penBuscar(id) {
+    return penDatos && (penDatos.penalizaciones || []).find(p => Number(p.id) === Number(id));
+  }
+  function penDescripcion(p) {
+    return `${cliEsc(cbNombre(p))} · ${cliEsc(PEN_ORIGEN[p.origen] || p.origen)} ${Number(p.porcentaje) || 0} %<br>${cliEsc(p.servicio || '')}${p.servicio ? ' · ' : ''}${cliEsc(penFechaCita(p))}`;
+  }
+
+  function penAbrirImporte(id) {
+    const p = penBuscar(id);
+    if (!p) return;
+    penModal = { tipo: 'importe', id: p.id };
+    const valor = p.importe != null ? cbNum(p.importe) : (p.importe_sugerido != null ? cbNum(p.importe_sugerido) : '');
+    const sugerencia = p.importe_sugerido != null
+      ? `<p class="bo-ayuda">Sugerido: <strong>${cbEur(p.importe_sugerido)}</strong> (${Number(p.porcentaje)} % de «${cliEsc(p.base_texto || '')}»). Puedes cambiarlo.</p>`
+      : '<p class="bo-ayuda">No hay un precio de referencia para sugerir el importe (sesión gratuita, servicio «Consultar» o sin cita). Escríbelo tú.</p>';
+    const puedeQuitar = p.importe != null && !(Number(p.pagado) > 0);
+    penAbrirModal(p.importe != null ? 'Cambiar importe' : 'Fijar importe',
+      `${penDescripcion(p)}${Number(p.pagado) > 0 ? `<br>Ya pagado: <strong>${cbEur(p.pagado)}</strong> (el importe no puede ser menor).` : ''}`,
+      `${cliCampo('Importe de la penalización (€)', `<input class="serv-input" data-pn="importe" inputmode="decimal" maxlength="10" value="${cliEsc(valor)}" placeholder="Por ejemplo 22,50">`, true)}
+       ${sugerencia}${puedeQuitar ? '<p class="bo-ayuda">Déjalo vacío para quitar el importe.</p>' : ''}`,
+      'Guardar importe');
+  }
+
+  function penAbrirCondonar(id) {
+    const p = penBuscar(id);
+    if (!p) return;
+    penModal = { tipo: 'condonar', id: p.id };
+    penAbrirModal('Condonar penalización',
+      `${penDescripcion(p)}<br>Dejará de cobrarse. Se queda en el historial y la puedes reactivar cuando quieras.`,
+      cliCampo('Motivo (opcional)', `<input class="serv-input" data-pn="motivo" maxlength="200" placeholder="Por ejemplo: avisó por teléfono y lo recuperamos">`),
+      'Condonar');
+  }
+
+  const PEN_ERROR_CAMPO = { importe_invalido: 'importe', importe_menor_pagado: 'importe', tiene_pagos: 'importe', motivo_largo: 'motivo' };
+
+  async function penConfirmarModal() {
+    if (!penModal) return;
+    const ok = document.getElementById('pn-modal-ok');
+    const textoOk = ok.textContent;
+    let url, cuerpo, mensajeOk;
+    if (penModal.tipo === 'importe') {
+      const p = penBuscar(penModal.id);
+      const importe = penModalCampo('importe').value.trim();
+      if (importe === '') {
+        if (!(p && p.importe != null && !(Number(p.pagado) > 0))) {
+          penModalMsg('Introduce el importe (por ejemplo 22 o 22,50). Si no hay que cobrar nada, usa «Condonar».', 'error'); penMarcar(penModalCampo('importe')); return;
+        }
+      } else if (!/^\d{1,7}([.,]\d{1,2})?$/.test(importe) || Number(importe.replace(',', '.')) <= 0) {
+        penModalMsg('Introduce un importe válido mayor que 0 (por ejemplo 22 o 22,50).', 'error'); penMarcar(penModalCampo('importe')); return;
+      }
+      cuerpo = { id: penModal.id, importe };
+      url = PEN_IMPORTE_URL; mensajeOk = importe === '' ? 'Importe quitado.' : 'Importe guardado.';
+    } else {
+      const motivo = penModalCampo('motivo').value.trim();
+      cuerpo = { id: penModal.id, motivo, por: localStorage.getItem(USER_KEY) || '' };
+      url = PEN_CONDONAR_URL; mensajeOk = 'Penalización condonada.';
+    }
+    ok.disabled = true; ok.textContent = 'Guardando…'; penModalMsg('');
+    try {
+      const r = await boPost(url, cuerpo);
+      if (!r.ok) {
+        penModalMsg(r.mensaje || 'No se ha podido guardar.', 'error');
+        if (PEN_ERROR_CAMPO[r.error]) penMarcar(penModalCampo(PEN_ERROR_CAMPO[r.error]));
+        ok.disabled = false; ok.textContent = textoOk;
+        if (r.error === 'no_existe') { penCerrarModal(); penCargar(true); }
+        return;
+      }
+      penCerrarModal();
+      await penCargar(true);
+      penToast(mensajeOk);
+    } catch (err) {
+      penModalMsg('No se ha podido conectar con el servidor. Inténtalo de nuevo.', 'error');
+      ok.disabled = false; ok.textContent = textoOk;
+    }
+  }
+
+  function penToast(texto) {
+    const el = document.getElementById('pen-count');
+    const previo = el.textContent;
+    el.textContent = '✓ ' + texto;
+    setTimeout(() => { if (el.textContent === '✓ ' + texto) el.textContent = previo; }, 3500);
+  }
+
+  async function penReactivar(id) {
+    const p = penBuscar(id);
+    if (!p) return;
+    const texto = `${cbNombre(p)} · ${PEN_ORIGEN[p.origen] || p.origen} ${Number(p.porcentaje) || 0} %\n${p.servicio || ''}${p.servicio ? ' · ' : ''}${penFechaCita(p)}`;
+    if (!confirm(`¿Reactivar esta penalización?\n\n${texto}\n\nVolverá a contar como pendiente.`)) return;
+    try {
+      const r = await boPost(PEN_REACTIVAR_URL, { id: Number(id) });
+      if (!r.ok) { alert(r.mensaje || 'No se ha podido reactivar.'); if (r.error === 'no_existe') penCargar(true); return; }
+      await penCargar(true);
+      penToast('Penalización reactivada.');
+    } catch (err) {
+      alert('No se ha podido conectar con el servidor. Inténtalo de nuevo.');
+    }
+  }
+
+  document.getElementById('pn-modal-ok').addEventListener('click', penConfirmarModal);
+  document.getElementById('pn-modal-cancelar').addEventListener('click', penCerrarModal);
+  document.getElementById('pn-modal').addEventListener('mousedown', (e) => { if (e.target.id === 'pn-modal') penCerrarModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (!penModal) return;
+    if (e.key === 'Escape') { e.stopPropagation(); penCerrarModal(); }
+    else if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); penConfirmarModal(); }
+  }, true);
+
+  document.getElementById('view-penalizaciones').addEventListener('click', (e) => {
+    const t = (sel) => e.target.closest(sel);
+    let el;
+    if ((el = t('[data-pen-importe]'))) return penAbrirImporte(el.dataset.penImporte);
+    if ((el = t('[data-pen-condonar]'))) return penAbrirCondonar(el.dataset.penCondonar);
+    if ((el = t('[data-pen-reactivar]'))) return penReactivar(el.dataset.penReactivar);
+    if ((el = t('[data-pen-cliente]'))) return cliAbrirFicha(Number(el.dataset.penCliente), 'editar');
+  });
