@@ -193,6 +193,69 @@
             <div id="deriv-list" class="deriv-list"></div>
           </section>
 
+          <!-- ============ HORARIO SEMANAL (punto 13 · incremento 1: tramos de cada profesional) ============ -->
+          <section class="view" id="view-horario">
+            <div class="hs-toolbar">
+              <div class="hs-semana">
+                <button class="deriv-refresh" id="hs-prev" title="Semana anterior" aria-label="Semana anterior">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <div class="hs-semana-txt">
+                  <strong id="hs-semana-label">Semana</strong>
+                  <span id="hs-estado" class="hs-estado"></span>
+                </div>
+                <button class="deriv-refresh" id="hs-next" title="Semana siguiente" aria-label="Semana siguiente">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+                <button class="cb-btn" id="hs-siguiente">Semana siguiente</button>
+              </div>
+              <div class="hs-acciones" id="hs-acciones">
+                <button class="cb-btn" id="hs-copiar-ant">Copiar semana anterior</button>
+                <button class="cb-btn" id="hs-desde-disp">Desde disponibilidad</button>
+                <button class="cb-btn" id="hs-vaciar">Empezar de cero</button>
+                <button class="cb-btn" id="hs-descartar">Descartar cambios</button>
+                <button class="cb-btn is-pri" id="hs-publicar">Publicar semana</button>
+              </div>
+            </div>
+
+            <div id="hs-loading" class="deriv-status">Cargando horario…</div>
+            <div id="hs-error" class="deriv-status deriv-status-error" style="display:none;">
+              <span id="hs-error-texto">No se ha podido conectar con el servidor.</span> <button id="hs-retry" class="deriv-retry-btn">Reintentar</button>
+            </div>
+
+            <div id="hs-panel" style="display:none;">
+              <div id="hs-banner" class="hs-banner" style="display:none;"></div>
+              <div class="hs-dias" id="hs-dias" role="tablist"></div>
+              <div class="hs-dia-bar">
+                <span class="hs-leyenda">
+                  <i class="hs-ley hs-ley-trabajo"></i>Trabaja (el bot puede ofrecerlo)
+                  <i class="hs-ley hs-ley-recepcion"></i>Recepción
+                  <i class="hs-ley hs-ley-bloqueado"></i>Ocupado
+                  <i class="hs-ley hs-ley-cita"></i>Cita
+                  <i class="hs-ley hs-ley-no"></i>No trabaja
+                </span>
+                <button class="cb-btn" id="hs-cerrar-dia">Cerrar este día</button>
+              </div>
+              <p class="hs-ayuda" id="hs-ayuda">Pulsa en la columna de un profesional para añadir un tramo; pulsa en un tramo para cambiarlo o quitarlo. Cada cambio se guarda solo como borrador: el bot no ve nada hasta que pulses «Publicar semana».</p>
+              <div class="hs-grid-wrap"><div class="hs-grid" id="hs-grid"></div></div>
+              <div class="hs-bottom">
+                <div class="hs-box">
+                  <h3>Avisos de la semana</h3>
+                  <div id="hs-avisos"></div>
+                </div>
+                <div class="hs-box">
+                  <h3>Horas de la semana</h3>
+                  <div class="serv-table-wrap">
+                    <table class="serv-table hs-resumen">
+                      <thead><tr><th>Profesional</th><th class="cb-num">Trabajo</th><th class="cb-num">Recep./ocupado</th><th class="cb-num">Total</th><th class="cb-num">Mín–máx</th></tr></thead>
+                      <tbody id="hs-resumen"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <!-- ============ CLIENTES (listado y buscador; ficha y alta en las siguientes entregas) ============ -->
           <section class="view" id="view-clientes">
             <div class="deriv-toolbar">
@@ -635,6 +698,20 @@
     <div class="cb-modal-btns">
       <button type="button" class="cli-btn-sec" id="pn-modal-cancelar">Cancelar</button>
       <button type="button" class="cli-btn-pri" id="pn-modal-ok">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="cb-modal-backdrop" id="hs-modal" aria-hidden="true">
+  <div class="cb-modal" role="dialog" aria-modal="true" aria-labelledby="hs-modal-titulo">
+    <h3 id="hs-modal-titulo">Tramo</h3>
+    <p class="cb-modal-ctx" id="hs-modal-ctx"></p>
+    <div id="hs-modal-body"></div>
+    <p class="cli-form-msg" id="hs-modal-msg" role="alert"></p>
+    <div class="cb-modal-btns">
+      <button type="button" class="cli-btn-sec hs-btn-borrar" id="hs-modal-borrar">Quitar tramo</button>
+      <button type="button" class="cli-btn-sec" id="hs-modal-cancelar">Cancelar</button>
+      <button type="button" class="cli-btn-pri" id="hs-modal-ok">Guardar</button>
     </div>
   </div>
 </div>

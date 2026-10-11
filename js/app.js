@@ -143,7 +143,7 @@
   const CLIENTES_DOC_ELIMINAR_URL = 'https://n8n.gorekia.com/webhook/panel-clientes-doc-eliminar';
 
   // Vistas con su propio markup ya escrito en el HTML (no se generan como placeholder vacío)
-  const CUSTOM_VIEWS = ['derivaciones', 'agenda', 'clientes', 'bonos', 'cobros', 'penalizaciones', 'servicios', 'equipo', 'config'];
+  const CUSTOM_VIEWS = ['derivaciones', 'agenda', 'horario', 'clientes', 'bonos', 'cobros', 'penalizaciones', 'servicios', 'equipo', 'config'];
 
   // Cada sección: icono (reutilizado del nav) + qué va a vivir aquí cuando se construya
   const VIEWS = {
@@ -235,6 +235,7 @@
       window.scrollTo({top:0, behavior:'smooth'});
       if (view === 'derivaciones') derivCargar();
       if (view === 'agenda') agendaCargar();
+      if (view === 'horario') hsCargar();
       if (view === 'clientes') clientesCargar();
       if (view === 'bonos') bonosCargar();
       if (view === 'cobros') cobrosCargar();
@@ -3590,3 +3591,458 @@
     if ((el = t('[data-pen-reactivar]'))) return penReactivar(el.dataset.penReactivar);
     if ((el = t('[data-pen-cliente]'))) return cliAbrirFicha(Number(el.dataset.penCliente), 'editar');
   });
+
+  // ============================================================
+  // HORARIO SEMANAL — punto 13 · incremento 1 (tramos de cada profesional)
+  // Contrato (workflow n8n CRM HORARIO, ver GUIA_N8N_HORARIO.md):
+  //   GET  panel-horario?semana=YYYY-MM-DD -> crm_horario_cargar
+  //        { ok, semana, hoy, estado: 'borrador'|'publicada'|'sin_publicar', editable, publicado_en,
+  //          horario_centro: {"1":["08:00","21:00"],...}, profesionales:[{id, nombre, color, ofertable_por_bot,
+  //          min_horas_semana, max_horas_semana, disponibilidad:[{dia, hora_inicio, hora_fin}]}],
+  //          tramos:[{profesional_id, fecha, hora_inicio, hora_fin, tipo, texto}],
+  //          citas:[{profesional_id, fecha, hora_inicio, hora_fin}], revision:{avisos, resumen, bloquea, confirmar} }
+  //   POST panel-horario-accion {accion:'guardar'|'copiar'|'publicar'|'descartar'|'revisar', ...}
+  //        Todas las reglas las aplica la base de datos; el panel solo enseña lo que devuelve.
+  // ============================================================
+  const HS_API_URL = 'https://n8n.gorekia.com/webhook/panel-horario';
+  const HS_ACCION_URL = 'https://n8n.gorekia.com/webhook/panel-horario-accion';
+
+  const HS_DIAS_CORTO = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  const HS_MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const HS_TIPOS = { trabajo: 'Trabaja', recepcion: 'Recepción', bloqueado: 'Ocupado' };
+  const HS_ESTADOS = { borrador: 'Borrador sin publicar', publicada: 'Publicada', sin_publicar: 'Sin publicar' };
+  const HS_PX_MIN = 1.2; // 30 min = 36 px
+
+  const hs = { semana: null, datos: null, tramos: [], dia: 1, ocupado: false, peticion: 0 };
+  let hsModalEstado = null; // { modo: 'nuevo'|'editar', indice, profesional_id, fecha }
+
+  // ---------- Fechas sin zona horaria ----------
+  function hsAFecha(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : new Date(NaN); }
+  function hsAIso(d) { return d.toISOString().slice(0, 10); }
+  function hsSumar(iso, dias) { const d = hsAFecha(iso); d.setUTCDate(d.getUTCDate() + dias); return hsAIso(d); }
+  function hsFechaCorta(iso) { const d = hsAFecha(iso); return `${d.getUTCDate()} ${HS_MESES[d.getUTCMonth()]}`; }
+  function hsMin(hhmm) { const m = /^(\d{1,2}):(\d{2})/.exec(hhmm || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+  function hsHora(min) { return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`; }
+  function hsNum(n) { return (Math.round(Number(n || 0) * 10) / 10).toString().replace('.', ','); }
+  function hsFechaDia(dia) { return hsSumar(hs.semana, dia - 1); }
+
+  function hsProf(id) { return (hs.datos && hs.datos.profesionales || []).find(p => Number(p.id) === Number(id)); }
+
+  // ---------- Carga ----------
+  async function hsCargar(semana) {
+    const pet = ++hs.peticion;
+    const primera = !hs.datos;
+    document.getElementById('hs-loading').style.display = primera ? '' : 'none';
+    if (primera) document.querySelectorAll('#hs-acciones button, #hs-prev, #hs-next').forEach(b => { b.disabled = true; });
+    document.getElementById('hs-error').style.display = 'none';
+    if (primera) document.getElementById('hs-panel').style.display = 'none';
+    try {
+      const url = semana ? `${HS_API_URL}?semana=${encodeURIComponent(semana)}` : HS_API_URL;
+      const r = await boGet(url);
+      if (pet !== hs.peticion) return;
+      if (!r || r.ok !== true) throw new Error((r && r.mensaje) || 'respuesta inesperada');
+      hsAplicar(r);
+    } catch (err) {
+      if (pet !== hs.peticion) return;
+      document.getElementById('hs-loading').style.display = 'none';
+      document.getElementById('hs-panel').style.display = 'none';
+      document.getElementById('hs-error-texto').textContent = 'No se ha podido conectar con el servidor.';
+      document.getElementById('hs-error').style.display = '';
+      document.querySelectorAll('#hs-acciones button').forEach(b => { b.disabled = true; });
+      document.querySelectorAll('#hs-prev, #hs-next').forEach(b => { b.disabled = !hs.semana; });
+    }
+  }
+
+  // Aplica una respuesta completa de cargar/copiar/descartar.
+  function hsAplicar(r) {
+    const semanaAnterior = hs.semana;
+    hs.datos = r;
+    hs.semana = r.semana;
+    hs.tramos = (r.tramos || []).map(t => ({ ...t }));
+    if (semanaAnterior !== r.semana) {
+      // Día por defecto: hoy si está en esta semana; si no, el lunes.
+      const hoyDia = r.hoy >= r.semana && r.hoy <= hsSumar(r.semana, 6) ? (hsAFecha(r.hoy).getUTCDay() || 7) : 1;
+      hs.dia = hoyDia > 5 ? 1 : hoyDia;
+    }
+    document.getElementById('hs-loading').style.display = 'none';
+    document.getElementById('hs-error').style.display = 'none';
+    document.getElementById('hs-panel').style.display = '';
+    hsRender();
+  }
+
+  // ---------- Render ----------
+  function hsRender() {
+    const d = hs.datos;
+    if (!d) return;
+    document.querySelectorAll('#hs-prev, #hs-next').forEach(b => { b.disabled = hs.ocupado; });
+    const editable = !!d.editable;
+    document.getElementById('hs-semana-label').textContent =
+      `Semana del ${hsFechaCorta(d.semana)} al ${hsFechaCorta(hsSumar(d.semana, 6))}`;
+    const est = document.getElementById('hs-estado');
+    est.textContent = editable ? (HS_ESTADOS[d.estado] || d.estado) : 'Semana pasada · solo lectura';
+    est.className = 'hs-estado hs-estado-' + (editable ? d.estado : 'pasada');
+
+    document.querySelectorAll('#hs-acciones button').forEach(b => { b.disabled = !editable || hs.ocupado; });
+    document.getElementById('hs-descartar').style.display = d.estado === 'borrador' ? '' : 'none';
+    document.getElementById('hs-publicar').disabled = !editable || hs.ocupado || d.estado !== 'borrador';
+    document.getElementById('hs-cerrar-dia').disabled = !editable || hs.ocupado;
+    document.getElementById('hs-ayuda').style.display = editable ? '' : 'none';
+
+    // Banner
+    const banner = document.getElementById('hs-banner');
+    const rev = d.revision || { bloquea: 0, confirmar: 0 };
+    let html = '';
+    if (!editable) html = '';
+    else if (d.estado === 'sin_publicar') html = '<strong>Semana sin publicar.</strong> El bot no ofrece ningún hueco esta semana hasta que la publiques.';
+    else if (d.estado === 'borrador') html = '<strong>Hay cambios sin publicar.</strong> El bot sigue ofreciendo lo último publicado hasta que pulses «Publicar semana».';
+    if (html && Number(rev.bloquea) > 0) html += ` Hay <strong>${rev.bloquea}</strong> problema${rev.bloquea > 1 ? 's' : ''} que impide${rev.bloquea > 1 ? 'n' : ''} publicar (ver avisos).`;
+    banner.innerHTML = html;
+    banner.className = 'hs-banner' + (d.estado === 'sin_publicar' ? ' is-alerta' : '');
+    banner.style.display = html ? '' : 'none';
+
+    hsRenderDias();
+    hsRenderGrid();
+    hsRenderAvisos();
+    hsRenderResumen();
+  }
+
+  function hsAvisosDe(fecha) {
+    return ((hs.datos.revision || {}).avisos || []).filter(a => a.fecha === fecha && a.nivel !== 'aviso');
+  }
+
+  function hsRenderDias() {
+    const cont = document.getElementById('hs-dias');
+    const finde = hs.tramos.some(t => { const dd = hsAFecha(t.fecha).getUTCDay(); return dd === 0 || dd === 6; });
+    const dias = finde ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5];
+    if (!dias.includes(hs.dia)) hs.dia = 1;
+    cont.innerHTML = dias.map(dia => {
+      const f = hsFechaDia(dia);
+      const n = hs.tramos.filter(t => t.fecha === f).length;
+      const av = hsAvisosDe(f);
+      const nivel = av.some(a => a.nivel === 'bloquea') ? 'bloquea' : (av.length ? 'confirmar' : '');
+      const cerrado = n === 0;
+      return `<button class="hs-dia${dia === hs.dia ? ' active' : ''}${cerrado ? ' is-vacio' : ''}" role="tab" aria-selected="${dia === hs.dia}" data-hs-dia="${dia}">
+        <span class="hs-dia-nom">${HS_DIAS_CORTO[dia - 1]} ${hsFechaCorta(f)}</span>
+        <span class="hs-dia-sub">${cerrado ? 'Sin tramos' : n + ' tramo' + (n > 1 ? 's' : '')}</span>
+        ${nivel ? `<span class="hs-dot hs-dot-${nivel}" title="Tiene avisos"></span>` : ''}
+      </button>`;
+    }).join('');
+  }
+
+  function hsRango(fecha) {
+    const centro = (hs.datos.horario_centro || {})[String(hs.dia)];
+    let ini = centro ? hsMin(centro[0]) : 8 * 60;
+    let fin = centro ? hsMin(centro[1]) : 21 * 60;
+    hs.tramos.filter(t => t.fecha === fecha).forEach(t => { ini = Math.min(ini, hsMin(t.hora_inicio)); fin = Math.max(fin, hsMin(t.hora_fin)); });
+    (hs.datos.citas || []).filter(c => c.fecha === fecha).forEach(c => { ini = Math.min(ini, hsMin(c.hora_inicio)); fin = Math.max(fin, hsMin(c.hora_fin)); });
+    ini = Math.floor(ini / 30) * 30; fin = Math.ceil(fin / 30) * 30;
+    return { ini, fin };
+  }
+
+  function hsRenderGrid() {
+    const grid = document.getElementById('hs-grid');
+    const fecha = hsFechaDia(hs.dia);
+    const { ini, fin } = hsRango(fecha);
+    const alto = (fin - ini) * HS_PX_MIN;
+    const profs = hs.datos.profesionales || [];
+    const editable = !!hs.datos.editable;
+
+    let horas = '';
+    for (let m = ini; m < fin; m += 30) {
+      horas += `<div class="hs-hora" style="height:${30 * HS_PX_MIN}px">${m % 60 === 0 ? hsHora(m) : ''}</div>`;
+    }
+    const cols = profs.map(p => {
+      const tramos = hs.tramos.map((t, i) => ({ t, i })).filter(x => x.t.fecha === fecha && Number(x.t.profesional_id) === Number(p.id));
+      const citas = (hs.datos.citas || []).filter(c => c.fecha === fecha && Number(c.profesional_id) === Number(p.id));
+      const bloques = tramos.map(({ t, i }) => {
+        const top = (hsMin(t.hora_inicio) - ini) * HS_PX_MIN;
+        const h = (hsMin(t.hora_fin) - hsMin(t.hora_inicio)) * HS_PX_MIN;
+        const etiqueta = t.tipo === 'trabajo' ? (p.ofertable_por_bot ? 'Libre' : 'Trabaja (no se ofrece)') : (t.texto || HS_TIPOS[t.tipo]);
+        return `<button class="hs-tramo hs-tramo-${t.tipo}" style="top:${top}px;height:${h}px" data-hs-tramo="${i}" ${editable ? '' : 'disabled'}
+                  title="${cliEsc(HS_TIPOS[t.tipo] + ' ' + t.hora_inicio + '–' + t.hora_fin + (t.texto ? ' · ' + t.texto : ''))}">
+                  <span class="hs-tramo-h">${t.hora_inicio}–${t.hora_fin}</span><span class="hs-tramo-t">${cliEsc(etiqueta)}</span></button>`;
+      }).join('');
+      const marcasCitas = citas.map(c => {
+        const top = (hsMin(c.hora_inicio) - ini) * HS_PX_MIN;
+        const h = (hsMin(c.hora_fin) - hsMin(c.hora_inicio)) * HS_PX_MIN;
+        return `<div class="hs-cita" style="top:${top}px;height:${h}px" title="Cita ${c.hora_inicio}–${c.hora_fin}">Cita</div>`;
+      }).join('');
+      const color = /^#[0-9A-Fa-f]{6}$/.test(p.color || '') ? p.color : '#C9CBD2';
+      return `<div class="hs-col">
+        <div class="hs-col-head"><span class="hs-color" style="background:${color}"></span><span class="hs-col-nom">${cliEsc(p.nombre)}</span>${p.ofertable_por_bot ? '' : '<span class="hs-nobot" title="El bot no ofrece sus huecos">no lo ofrece el bot</span>'}</div>
+        <div class="hs-col-body${editable ? ' is-editable' : ''}" style="height:${alto}px" data-hs-prof="${p.id}">${bloques}${marcasCitas}</div>
+      </div>`;
+    }).join('');
+    grid.innerHTML = `<div class="hs-col hs-col-horas"><div class="hs-col-head"></div><div style="height:${alto}px">${horas}</div></div>${cols}`;
+    grid.style.setProperty('--hs-slot', (30 * HS_PX_MIN) + 'px');
+    grid.dataset.ini = ini;
+  }
+
+  function hsRenderAvisos() {
+    const cont = document.getElementById('hs-avisos');
+    const avisos = ((hs.datos.revision || {}).avisos || []);
+    if (!avisos.length) { cont.innerHTML = '<p class="hs-ok">Sin avisos: la semana cumple todas las reglas.</p>'; return; }
+    const orden = { bloquea: 0, confirmar: 1, aviso: 2 };
+    const etiqueta = { bloquea: 'Impide publicar', confirmar: 'Pide confirmación', aviso: 'Aviso' };
+    cont.innerHTML = '<ul class="hs-avisos">' + avisos.slice().sort((a, b) => orden[a.nivel] - orden[b.nivel]).map(a => {
+      const dia = a.fecha ? (hsAFecha(a.fecha).getUTCDay() || 7) : null;
+      return `<li class="hs-av hs-av-${a.nivel}"${dia ? ` data-hs-ir="${dia}"` : ''}><span class="hs-av-tag">${etiqueta[a.nivel] || a.nivel}</span>${cliEsc(a.mensaje)}</li>`;
+    }).join('') + '</ul>';
+  }
+
+  function hsRenderResumen() {
+    const filas = ((hs.datos.revision || {}).resumen || []).map(r => {
+      const tot = Number(r.horas_total) || 0;
+      const mn = r.min != null && r.min !== '' ? Number(r.min) : null;
+      const mx = r.max != null && r.max !== '' ? Number(r.max) : null;
+      const fuera = tot > 0 && ((mn && tot < mn) || (mx && tot > mx));
+      const p = hsProf(r.profesional_id);
+      const color = p && /^#[0-9A-Fa-f]{6}$/.test(p.color || '') ? p.color : '#C9CBD2';
+      return `<tr${fuera ? ' class="hs-fuera"' : ''}>
+        <td><span class="hs-color" style="background:${color}"></span> ${cliEsc(r.nombre)}</td>
+        <td class="cb-num">${hsNum(r.horas_trabajo)} h</td><td class="cb-num">${hsNum(r.horas_otras)} h</td>
+        <td class="cb-num"><strong>${hsNum(tot)} h</strong></td>
+        <td class="cb-num">${mn || mx ? `${mn ? hsNum(mn) : '—'}–${mx ? hsNum(mx) : '—'} h` : '—'}</td></tr>`;
+    }).join('');
+    document.getElementById('hs-resumen').innerHTML = filas;
+  }
+
+  // ---------- Guardar el borrador (cada cambio) ----------
+  async function hsGuardar(nuevos) {
+    hs.ocupado = true; hsRender();
+    try {
+      const r = await boPost(HS_ACCION_URL, { accion: 'guardar', semana: hs.semana, tramos: nuevos });
+      if (!r.ok) return r;
+      hs.tramos = nuevos.map(t => ({ ...t }));
+      hs.datos.tramos = hs.tramos;
+      hs.datos.revision = r.revision;
+      hs.datos.estado = 'borrador';
+      return r;
+    } finally {
+      hs.ocupado = false; hsRender();
+    }
+  }
+
+  // ---------- Modal de tramo ----------
+  function hsOpcionesHora(ini, fin, sel) {
+    let html = '';
+    for (let m = ini; m <= fin; m += 15) html += `<option value="${hsHora(m)}"${hsHora(m) === sel ? ' selected' : ''}>${hsHora(m)}</option>`;
+    if (sel && hsMin(sel) % 15 !== 0) html = `<option value="${sel}" selected>${sel}</option>` + html;
+    return html;
+  }
+
+  function hsAbrirModal(estado) {
+    hsModalEstado = estado;
+    const t = estado.modo === 'editar' ? hs.tramos[estado.indice] : estado.tramo;
+    const p = hsProf(t.profesional_id);
+    const dia = hsAFecha(t.fecha).getUTCDay() || 7;
+    document.getElementById('hs-modal-titulo').textContent = estado.modo === 'editar' ? 'Cambiar tramo' : 'Añadir tramo';
+    document.getElementById('hs-modal-ctx').textContent = `${p ? p.nombre : ''} · ${HS_DIAS_CORTO[dia - 1]} ${hsFechaCorta(t.fecha)}`;
+    const tipos = Object.entries(HS_TIPOS).map(([k, v]) => `<option value="${k}"${k === t.tipo ? ' selected' : ''}>${v}</option>`).join('');
+    document.getElementById('hs-modal-body').innerHTML = `
+      <div class="hs-modal-horas">
+        ${cliCampo('Desde', `<select class="serv-input" data-hs="ini">${hsOpcionesHora(6 * 60, 23 * 60, t.hora_inicio)}</select>`, true)}
+        ${cliCampo('Hasta', `<select class="serv-input" data-hs="fin">${hsOpcionesHora(6 * 60, 23 * 60 + 45, t.hora_fin)}</select>`, true)}
+      </div>
+      ${cliCampo('Tipo', `<select class="serv-input" data-hs="tipo">${tipos}</select>`, true)}
+      <div data-hs-texto-wrap${t.tipo === 'trabajo' ? ' style="display:none"' : ''}>
+        ${cliCampo('Texto (lo que se ve en la rejilla)', `<input class="serv-input" data-hs="texto" maxlength="60" value="${cliEsc(t.texto || '')}" placeholder="Por ejemplo: RECEPCIÓN o FDYCyL">`)}
+      </div>
+      <p class="bo-ayuda">«Trabaja» es tiempo que el bot puede ofrecer (si el profesional se ofrece por el bot). «Recepción» y «Ocupado» cuentan como horas de trabajo, pero el bot no los ofrece.</p>`;
+    document.querySelector('#hs-modal-body [data-hs="tipo"]').addEventListener('change', (e) => {
+      document.querySelector('#hs-modal-body [data-hs-texto-wrap]').style.display = e.target.value === 'trabajo' ? 'none' : '';
+    });
+    document.getElementById('hs-modal-borrar').style.display = estado.modo === 'editar' ? '' : 'none';
+    document.getElementById('hs-modal-ok').textContent = 'Guardar';
+    hsModalMsg('');
+    document.getElementById('hs-modal').classList.add('open');
+    document.getElementById('hs-modal').setAttribute('aria-hidden', 'false');
+    setTimeout(() => { const el = document.querySelector('#hs-modal-body [data-hs="ini"]'); if (el) el.focus(); }, 30);
+  }
+
+  function hsCerrarModal() {
+    hsModalEstado = null;
+    document.getElementById('hs-modal').classList.remove('open');
+    document.getElementById('hs-modal').setAttribute('aria-hidden', 'true');
+  }
+
+  function hsModalMsg(texto, tipo) {
+    const el = document.getElementById('hs-modal-msg');
+    el.textContent = texto || '';
+    el.className = 'cli-form-msg' + (tipo ? ' is-' + tipo : '');
+  }
+
+  async function hsModalGuardar(borrar) {
+    if (!hsModalEstado || hs.ocupado) return;
+    const est = hsModalEstado;
+    const base = est.modo === 'editar' ? hs.tramos[est.indice] : est.tramo;
+    let nuevos = hs.tramos.map(t => ({ ...t }));
+    if (borrar) {
+      nuevos.splice(est.indice, 1);
+    } else {
+      const val = (n) => document.querySelector(`#hs-modal-body [data-hs="${n}"]`).value;
+      const tramo = { profesional_id: base.profesional_id, fecha: base.fecha, hora_inicio: val('ini'), hora_fin: val('fin'), tipo: val('tipo'), texto: null };
+      if (tramo.tipo !== 'trabajo') tramo.texto = val('texto').trim() || null;
+      if (hsMin(tramo.hora_fin) <= hsMin(tramo.hora_inicio)) { hsModalMsg('La hora de fin tiene que ser posterior a la de inicio.', 'error'); return; }
+      const choca = nuevos.some((t, i) => i !== est.indice && Number(t.profesional_id) === Number(tramo.profesional_id) && t.fecha === tramo.fecha
+        && hsMin(t.hora_inicio) < hsMin(tramo.hora_fin) && hsMin(tramo.hora_inicio) < hsMin(t.hora_fin));
+      if (choca) { hsModalMsg('Se solapa con otro tramo de este profesional ese día. Cámbialo o quita el otro primero.', 'error'); return; }
+      if (est.modo === 'editar') nuevos[est.indice] = tramo; else nuevos.push(tramo);
+    }
+    const ok = document.getElementById('hs-modal-ok');
+    ok.disabled = true; hsModalMsg('Guardando…');
+    try {
+      const r = await hsGuardar(nuevos);
+      if (!r.ok) { hsModalMsg(r.mensaje || 'No se ha podido guardar.', 'error'); return; }
+      hsCerrarModal();
+    } catch (err) {
+      hsModalMsg('No se ha podido conectar con el servidor. Inténtalo de nuevo.', 'error');
+    } finally {
+      ok.disabled = false;
+    }
+  }
+
+  // ---------- Acciones de semana ----------
+  async function hsCopiar(origen, pregunta) {
+    if (hs.ocupado || !hs.datos || !hs.datos.editable) return;
+    if (pregunta && !confirm(pregunta)) return;
+    hs.ocupado = true; hsRender();
+    try {
+      let r = await boPost(HS_ACCION_URL, { accion: 'copiar', destino: hs.semana, origen });
+      if (!r.ok && r.requiere_confirmacion) {
+        if (!confirm(r.mensaje)) return;
+        r = await boPost(HS_ACCION_URL, { accion: 'copiar', destino: hs.semana, origen, confirmar: true });
+      }
+      if (!r.ok) { alert(r.mensaje || 'No se ha podido hacer.'); return; }
+      hsAplicar(r);
+    } catch (err) {
+      alert('No se ha podido conectar con el servidor. Inténtalo de nuevo.');
+    } finally {
+      hs.ocupado = false; hsRender();
+    }
+  }
+
+  async function hsDescartar() {
+    if (hs.ocupado) return;
+    if (!confirm('¿Descartar todos los cambios sin publicar de esta semana?\n\nVolverá a verse lo último publicado.')) return;
+    hs.ocupado = true; hsRender();
+    try {
+      const r = await boPost(HS_ACCION_URL, { accion: 'descartar', semana: hs.semana });
+      if (!r.ok) { alert(r.mensaje || 'No se ha podido descartar.'); return; }
+      hsAplicar(r);
+    } catch (err) {
+      alert('No se ha podido conectar con el servidor. Inténtalo de nuevo.');
+    } finally {
+      hs.ocupado = false; hsRender();
+    }
+  }
+
+  async function hsCerrarDia() {
+    if (hs.ocupado || !hs.datos.editable) return;
+    const fecha = hsFechaDia(hs.dia);
+    const n = hs.tramos.filter(t => t.fecha === fecha).length;
+    if (!n) { alert('Este día ya no tiene tramos.'); return; }
+    if (!confirm(`¿Cerrar el ${HS_DIAS_CORTO[hs.dia - 1]} ${hsFechaCorta(fecha)}?\n\nSe quitan los ${n} tramos de ese día (por ejemplo, un festivo). Se guarda como borrador; el bot no cambia hasta que publiques.`)) return;
+    try {
+      const r = await hsGuardar(hs.tramos.filter(t => t.fecha !== fecha));
+      if (!r.ok) alert(r.mensaje || 'No se ha podido guardar.');
+    } catch (err) {
+      alert('No se ha podido conectar con el servidor. Inténtalo de nuevo.');
+    }
+  }
+
+  // Publicar: primero sin confirmar; si hay avisos que confirmar o problemas, se enseñan en la ventana.
+  async function hsPublicar(confirmado) {
+    if (hs.ocupado) return;
+    hs.ocupado = true; hsRender();
+    try {
+      const r = await boPost(HS_ACCION_URL, { accion: 'publicar', semana: hs.semana, confirmar: !!confirmado });
+      if (r.ok) {
+        hsCerrarModal();
+        hs.ocupado = false;
+        await hsCargar(hs.semana);
+        alert(r.mensaje || 'Semana publicada.');
+        return;
+      }
+      if (r.error === 'bloqueado' || r.requiere_confirmacion) { hsModalPublicar(r); return; }
+      alert(r.mensaje || 'No se ha podido publicar.');
+      if (r.error === 'sin_borrador') hsCargar(hs.semana);
+    } catch (err) {
+      alert('No se ha podido conectar con el servidor. Inténtalo de nuevo.');
+    } finally {
+      hs.ocupado = false; hsRender();
+    }
+  }
+
+  function hsModalPublicar(r) {
+    const bloquea = r.error === 'bloqueado';
+    hsModalEstado = { modo: 'publicar', bloquea };
+    const avisos = (r.avisos || []).filter(a => bloquea ? a.nivel === 'bloquea' : a.nivel !== 'bloquea');
+    const lista = avisos.map(a => `<li class="hs-av hs-av-${a.nivel}">${cliEsc(a.mensaje)}</li>`).join('');
+    const resumen = (r.resumen || []).filter(x => Number(x.horas_total) > 0)
+      .map(x => `<li>${cliEsc(x.nombre)}: <strong>${hsNum(x.horas_total)} h</strong></li>`).join('');
+    document.getElementById('hs-modal-titulo').textContent = bloquea ? 'No se puede publicar todavía' : 'Revisa antes de publicar';
+    document.getElementById('hs-modal-ctx').textContent = bloquea
+      ? 'Corrige estos puntos en la rejilla y vuelve a publicar:'
+      : `Semana del ${hsFechaCorta(hs.semana)} al ${hsFechaCorta(hsSumar(hs.semana, 6))}. Al publicar, el bot ofrecerá exactamente estos huecos.`;
+    document.getElementById('hs-modal-body').innerHTML = `<ul class="hs-avisos hs-avisos-modal">${lista}</ul>
+      ${!bloquea && resumen ? `<p class="hs-modal-sub">Horas de la semana</p><ul class="hs-resumen-mini">${resumen}</ul>` : ''}`;
+    document.getElementById('hs-modal-borrar').style.display = 'none';
+    const ok = document.getElementById('hs-modal-ok');
+    ok.textContent = bloquea ? 'Entendido' : 'Publicar igualmente';
+    hsModalMsg('');
+    document.getElementById('hs-modal').classList.add('open');
+    document.getElementById('hs-modal').setAttribute('aria-hidden', 'false');
+  }
+
+  // ---------- Eventos ----------
+  document.getElementById('hs-prev').addEventListener('click', () => { if (hs.semana && !hs.ocupado) hsCargar(hsSumar(hs.semana, -7)); });
+  document.getElementById('hs-next').addEventListener('click', () => { if (hs.semana && !hs.ocupado) hsCargar(hsSumar(hs.semana, 7)); });
+  document.getElementById('hs-siguiente').addEventListener('click', () => { if (!hs.ocupado) hsCargar(); });
+  document.getElementById('hs-retry').addEventListener('click', () => hsCargar(hs.semana || undefined));
+  document.getElementById('hs-copiar-ant').addEventListener('click', () => {
+    if (!hs.semana) return;
+    hsCopiar(hsSumar(hs.semana, -7), `¿Copiar los tramos de la semana del ${hsFechaCorta(hsSumar(hs.semana, -7))}?`);
+  });
+  document.getElementById('hs-desde-disp').addEventListener('click', () =>
+    hsCopiar('disponibilidad', '¿Rellenar la semana con la disponibilidad habitual de cada profesional?'));
+  document.getElementById('hs-vaciar').addEventListener('click', () =>
+    hsCopiar('vacia', '¿Empezar la semana de cero (sin ningún tramo)?'));
+  document.getElementById('hs-descartar').addEventListener('click', hsDescartar);
+  document.getElementById('hs-publicar').addEventListener('click', () => hsPublicar(false));
+  document.getElementById('hs-cerrar-dia').addEventListener('click', hsCerrarDia);
+
+  document.getElementById('view-horario').addEventListener('click', (e) => {
+    const t = (sel) => e.target.closest(sel);
+    let el;
+    if ((el = t('[data-hs-dia]'))) { hs.dia = Number(el.dataset.hsDia); hsRender(); return; }
+    if ((el = t('[data-hs-ir]'))) { hs.dia = Number(el.dataset.hsIr); hsRender(); document.getElementById('hs-dias').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+    if (!hs.datos || !hs.datos.editable || hs.ocupado) return;
+    if ((el = t('[data-hs-tramo]'))) { hsAbrirModal({ modo: 'editar', indice: Number(el.dataset.hsTramo) }); return; }
+    if ((el = t('.hs-col-body.is-editable'))) {
+      const rect = el.getBoundingClientRect();
+      const ini = Number(document.getElementById('hs-grid').dataset.ini) || 480;
+      const min = ini + Math.floor(((e.clientY - rect.top) / HS_PX_MIN) / 30) * 30;
+      const fin = Math.min(min + 60, 23 * 60 + 45);
+      hsAbrirModal({ modo: 'nuevo', indice: -1, tramo: { profesional_id: Number(el.dataset.hsProf), fecha: hsFechaDia(hs.dia),
+        hora_inicio: hsHora(min), hora_fin: hsHora(fin), tipo: 'trabajo', texto: null } });
+    }
+  });
+
+  document.getElementById('hs-modal-ok').addEventListener('click', () => {
+    if (hsModalEstado && hsModalEstado.modo === 'publicar') {
+      const bloquea = hsModalEstado.bloquea;
+      hsCerrarModal();
+      document.getElementById('hs-modal-ok').textContent = 'Guardar';
+      if (!bloquea) hsPublicar(true);
+      return;
+    }
+    hsModalGuardar(false);
+  });
+  document.getElementById('hs-modal-borrar').addEventListener('click', () => hsModalGuardar(true));
+  document.getElementById('hs-modal-cancelar').addEventListener('click', () => { hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; });
+  document.getElementById('hs-modal').addEventListener('mousedown', (e) => { if (e.target.id === 'hs-modal') { hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; } });
+  document.addEventListener('keydown', (e) => {
+    if (!hsModalEstado) return;
+    if (e.key === 'Escape') { e.stopPropagation(); hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; }
+  }, true);
