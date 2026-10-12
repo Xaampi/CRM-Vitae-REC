@@ -227,11 +227,15 @@
               <div id="hs-banner" class="hs-banner" style="display:none;"></div>
               <div class="hs-dias" id="hs-dias" role="tablist"></div>
               <div class="hs-dia-bar">
+                <div class="pill-filter" id="hs-modo" role="tablist" aria-label="Qué editar">
+                  <button class="pill active" data-hs-modo="citas">Citas</button>
+                  <button class="pill" data-hs-modo="tramos">Tramos</button>
+                </div>
                 <span class="hs-leyenda">
                   <i class="hs-ley hs-ley-trabajo"></i>Trabaja (el bot puede ofrecerlo)
                   <i class="hs-ley hs-ley-recepcion"></i>Recepción
                   <i class="hs-ley hs-ley-bloqueado"></i>Ocupado
-                  <i class="hs-ley hs-ley-cita"></i>Cita
+                  <i class="hs-ley hs-ley-cita"></i>Cita (color del profesional; nombre en rojo = cliente difícil)
                   <i class="hs-ley hs-ley-no"></i>No trabaja
                 </span>
                 <button class="cb-btn" id="hs-cerrar-dia">Cerrar este día</button>
@@ -247,7 +251,7 @@
                   <h3>Horas de la semana</h3>
                   <div class="serv-table-wrap">
                     <table class="serv-table hs-resumen">
-                      <thead><tr><th>Profesional</th><th class="cb-num">Trabajo</th><th class="cb-num">Recep./ocupado</th><th class="cb-num">Total</th><th class="cb-num">Mín–máx</th></tr></thead>
+                      <thead><tr><th>Profesional</th><th class="cb-num">Trabajo</th><th class="cb-num">Otras</th><th class="cb-num">Total</th><th class="cb-num">Mín–máx</th></tr></thead>
                       <tbody id="hs-resumen"></tbody>
                     </table>
                   </div>

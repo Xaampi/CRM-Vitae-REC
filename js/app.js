@@ -3613,7 +3613,7 @@
   const HS_ESTADOS = { borrador: 'Borrador sin publicar', publicada: 'Publicada', sin_publicar: 'Sin publicar' };
   const HS_PX_MIN = 1.2; // 30 min = 36 px
 
-  const hs = { semana: null, datos: null, tramos: [], dia: 1, ocupado: false, peticion: 0 };
+  const hs = { semana: null, datos: null, tramos: [], dia: 1, ocupado: false, peticion: 0, modo: 'citas' };
   let hsModalEstado = null; // { modo: 'nuevo'|'editar', indice, profesional_id, fecha }
 
   // ---------- Fechas sin zona horaria ----------
@@ -3686,7 +3686,13 @@
     document.getElementById('hs-descartar').style.display = d.estado === 'borrador' ? '' : 'none';
     document.getElementById('hs-publicar').disabled = !editable || hs.ocupado || d.estado !== 'borrador';
     document.getElementById('hs-cerrar-dia').disabled = !editable || hs.ocupado;
-    document.getElementById('hs-ayuda').style.display = editable ? '' : 'none';
+    document.getElementById('hs-cerrar-dia').style.display = hs.modo === 'tramos' ? '' : 'none';
+    document.querySelectorAll('#hs-modo [data-hs-modo]').forEach(b => b.classList.toggle('active', b.dataset.hsModo === hs.modo));
+    const ayuda = document.getElementById('hs-ayuda');
+    ayuda.textContent = hs.modo === 'citas'
+      ? 'Modo citas: pulsa en la columna de un profesional para poner una cita; pulsa en una cita para moverla, cancelarla o marcar que no vino. Las citas se guardan al momento y el bot las ve enseguida.'
+      : 'Modo tramos: pulsa en la columna de un profesional para añadir un tramo; pulsa en un tramo para cambiarlo o quitarlo. Cada cambio se guarda como borrador: el bot no ve nada hasta que pulses «Publicar semana».';
+    ayuda.style.display = (hs.modo === 'citas' || editable) ? '' : 'none';
 
     // Banner
     const banner = document.getElementById('hs-banner');
@@ -3745,7 +3751,8 @@
     const { ini, fin } = hsRango(fecha);
     const alto = (fin - ini) * HS_PX_MIN;
     const profs = hs.datos.profesionales || [];
-    const editable = !!hs.datos.editable;
+    const modoTramos = hs.modo === 'tramos';
+    const editable = modoTramos ? !!hs.datos.editable : fecha >= (hs.datos.hoy || '');
 
     let horas = '';
     for (let m = ini; m < fin; m += 30) {
@@ -3758,16 +3765,21 @@
         const top = (hsMin(t.hora_inicio) - ini) * HS_PX_MIN;
         const h = (hsMin(t.hora_fin) - hsMin(t.hora_inicio)) * HS_PX_MIN;
         const etiqueta = t.tipo === 'trabajo' ? (p.ofertable_por_bot ? 'Libre' : 'Trabaja (no se ofrece)') : (t.texto || HS_TIPOS[t.tipo]);
+        if (!modoTramos) return `<div class="hs-tramo hs-tramo-${t.tipo} is-fondo" style="top:${top}px;height:${h}px"><span class="hs-tramo-h">${t.hora_inicio}–${t.hora_fin}</span><span class="hs-tramo-t">${cliEsc(etiqueta)}</span></div>`;
         return `<button class="hs-tramo hs-tramo-${t.tipo}" style="top:${top}px;height:${h}px" data-hs-tramo="${i}" ${editable ? '' : 'disabled'}
                   title="${cliEsc(HS_TIPOS[t.tipo] + ' ' + t.hora_inicio + '–' + t.hora_fin + (t.texto ? ' · ' + t.texto : ''))}">
                   <span class="hs-tramo-h">${t.hora_inicio}–${t.hora_fin}</span><span class="hs-tramo-t">${cliEsc(etiqueta)}</span></button>`;
       }).join('');
+      const color = /^#[0-9A-Fa-f]{6}$/.test(p.color || '') ? p.color : '#C9CBD2';
       const marcasCitas = citas.map(c => {
         const top = (hsMin(c.hora_inicio) - ini) * HS_PX_MIN;
         const h = (hsMin(c.hora_fin) - hsMin(c.hora_inicio)) * HS_PX_MIN;
-        return `<div class="hs-cita" style="top:${top}px;height:${h}px" title="Cita ${c.hora_inicio}–${c.hora_fin}">Cita</div>`;
+        if (modoTramos) return `<div class="hs-cita" style="top:${top}px;height:${h}px" title="Cita ${c.hora_inicio}–${c.hora_fin}">Cita</div>`;
+        const estado = c.estado === 'no_show' ? ' · no vino' : (c.estado === 'realizada' ? ' · hecha' : '');
+        return `<button class="hs-cita-full${c.fuera_tramo ? ' is-fuera' : ''}${c.estado !== 'confirmada' ? ' is-pasada' : ''}" style="top:${top}px;height:${h}px;background:${color};color:${hsTextoSobre(color)}" data-hs-cita="${Number(c.id)}"
+                  title="${cliEsc(c.cliente + ' · ' + c.servicio + ' · ' + c.hora_inicio + '–' + c.hora_fin + (c.fuera_tramo ? ' · fuera de tramo' : ''))}">
+                  <span class="hs-tramo-h">${c.hora_inicio}–${c.hora_fin}${estado}</span><span class="hs-tramo-t${c.dificil ? ' is-dificil' : ''}">${cliEsc(c.cliente)}</span></button>`;
       }).join('');
-      const color = /^#[0-9A-Fa-f]{6}$/.test(p.color || '') ? p.color : '#C9CBD2';
       return `<div class="hs-col">
         <div class="hs-col-head"><span class="hs-color" style="background:${color}"></span><span class="hs-col-nom">${cliEsc(p.nombre)}</span>${p.ofertable_por_bot ? '' : '<span class="hs-nobot" title="El bot no ofrece sus huecos">no lo ofrece el bot</span>'}</div>
         <div class="hs-col-body${editable ? ' is-editable' : ''}" style="height:${alto}px" data-hs-prof="${p.id}">${bloques}${marcasCitas}</div>
@@ -3854,6 +3866,8 @@
     });
     document.getElementById('hs-modal-borrar').style.display = estado.modo === 'editar' ? '' : 'none';
     document.getElementById('hs-modal-ok').textContent = 'Guardar';
+    document.getElementById('hs-modal-ok').style.display = '';
+    document.getElementById('hs-modal-cancelar').textContent = 'Cancelar';
     hsModalMsg('');
     document.getElementById('hs-modal').classList.add('open');
     document.getElementById('hs-modal').setAttribute('aria-hidden', 'false');
@@ -3988,7 +4002,9 @@
     document.getElementById('hs-modal-body').innerHTML = `<ul class="hs-avisos hs-avisos-modal">${lista}</ul>
       ${!bloquea && resumen ? `<p class="hs-modal-sub">Horas de la semana</p><ul class="hs-resumen-mini">${resumen}</ul>` : ''}`;
     document.getElementById('hs-modal-borrar').style.display = 'none';
+    document.getElementById('hs-modal-cancelar').textContent = 'Cancelar';
     const ok = document.getElementById('hs-modal-ok');
+    ok.style.display = '';
     ok.textContent = bloquea ? 'Entendido' : 'Publicar igualmente';
     hsModalMsg('');
     document.getElementById('hs-modal').classList.add('open');
@@ -4017,7 +4033,19 @@
     let el;
     if ((el = t('[data-hs-dia]'))) { hs.dia = Number(el.dataset.hsDia); hsRender(); return; }
     if ((el = t('[data-hs-ir]'))) { hs.dia = Number(el.dataset.hsIr); hsRender(); document.getElementById('hs-dias').scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
-    if (!hs.datos || !hs.datos.editable || hs.ocupado) return;
+    if ((el = t('[data-hs-modo]'))) { hs.modo = el.dataset.hsModo; hsRender(); return; }
+    if (!hs.datos || hs.ocupado) return;
+    if ((el = t('[data-hs-cita]'))) { hsAbrirCita(Number(el.dataset.hsCita)); return; }
+    if (hs.modo === 'citas') {
+      if ((el = t('.hs-col-body.is-editable'))) {
+        const rect = el.getBoundingClientRect();
+        const ini = Number(document.getElementById('hs-grid').dataset.ini) || 480;
+        const min = ini + Math.floor(((e.clientY - rect.top) / HS_PX_MIN) / 30) * 30;
+        hsAbrirNuevaCita(Number(el.dataset.hsProf), hsFechaDia(hs.dia), hsHora(min));
+      }
+      return;
+    }
+    if (!hs.datos.editable) return;
     if ((el = t('[data-hs-tramo]'))) { hsAbrirModal({ modo: 'editar', indice: Number(el.dataset.hsTramo) }); return; }
     if ((el = t('.hs-col-body.is-editable'))) {
       const rect = el.getBoundingClientRect();
@@ -4030,6 +4058,7 @@
   });
 
   document.getElementById('hs-modal-ok').addEventListener('click', () => {
+    if (hsModalEstado && hsModalEstado.modo && hsModalEstado.modo.startsWith('cita')) { hsCitaOk(); return; }
     if (hsModalEstado && hsModalEstado.modo === 'publicar') {
       const bloquea = hsModalEstado.bloquea;
       hsCerrarModal();
@@ -4039,10 +4068,246 @@
     }
     hsModalGuardar(false);
   });
-  document.getElementById('hs-modal-borrar').addEventListener('click', () => hsModalGuardar(true));
+  document.getElementById('hs-modal-borrar').addEventListener('click', () => {
+    if (hsModalEstado && hsModalEstado.modo && hsModalEstado.modo.startsWith('cita')) { hsCitaSecundario(); return; }
+    hsModalGuardar(true);
+  });
   document.getElementById('hs-modal-cancelar').addEventListener('click', () => { hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; });
   document.getElementById('hs-modal').addEventListener('mousedown', (e) => { if (e.target.id === 'hs-modal') { hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; } });
   document.addEventListener('keydown', (e) => {
     if (!hsModalEstado) return;
     if (e.key === 'Escape') { e.stopPropagation(); hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; }
   }, true);
+  // ============================================================
+  // HORARIO SEMANAL — punto 13 · incremento 2: citas en la rejilla
+  // Acciones por la misma ruta (panel-horario-accion): crear_cita, mover_cita, cancelar_cita, no_show.
+  // Las reglas (solapes, horario, tramos, difícil, excluido, seguidas, simultáneas) las decide la BD.
+  // ============================================================
+  let hsCliPeticion = 0;
+
+  function hsTextoSobre(hex) {
+    const n = parseInt(String(hex).slice(1), 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#16171C' : '#FFFFFF';
+  }
+  function hsCita(id) { return (hs.datos.citas || []).find(c => Number(c.id) === Number(id)); }
+  function hsToast(texto) {
+    let el = document.getElementById('hs-toast');
+    if (!el) { el = document.createElement('div'); el.id = 'hs-toast'; el.className = 'hs-toast'; document.body.appendChild(el); }
+    el.textContent = texto; el.classList.add('show');
+    clearTimeout(hsToast.t); hsToast.t = setTimeout(() => el.classList.remove('show'), 4000);
+  }
+
+  function hsModalBase(titulo, ctx, cuerpo, okTexto, secTexto) {
+    document.getElementById('hs-modal-titulo').textContent = titulo;
+    document.getElementById('hs-modal-ctx').textContent = ctx || '';
+    document.getElementById('hs-modal-body').innerHTML = cuerpo;
+    const ok = document.getElementById('hs-modal-ok');
+    ok.textContent = okTexto || ''; ok.style.display = okTexto ? '' : 'none'; ok.disabled = false;
+    const sec = document.getElementById('hs-modal-borrar');
+    sec.textContent = secTexto || ''; sec.style.display = secTexto ? '' : 'none';
+    document.getElementById('hs-modal-cancelar').textContent = 'Cerrar';
+    hsModalMsg('');
+    document.getElementById('hs-modal').classList.add('open');
+    document.getElementById('hs-modal').setAttribute('aria-hidden', 'false');
+  }
+
+  function hsOpcionesProf(sel) {
+    return (hs.datos.profesionales || []).map(p => `<option value="${p.id}"${Number(p.id) === Number(sel) ? ' selected' : ''}>${cliEsc(p.nombre)}</option>`).join('');
+  }
+  function hsOpcionesDias(sel) {
+    let html = '';
+    for (let d = 1; d <= 7; d++) {
+      const f = hsFechaDia(d);
+      if (f < hs.datos.hoy) continue;
+      html += `<option value="${f}"${f === sel ? ' selected' : ''}>${HS_DIAS_CORTO[d - 1]} ${hsFechaCorta(f)}</option>`;
+    }
+    return html;
+  }
+  function hsOpcionesServ(profId, sel) {
+    const servs = hs.datos.servicios || [];
+    const propios = servs.filter(s => !s.profesionales.length || s.profesionales.map(Number).includes(Number(profId)));
+    const otros = servs.filter(s => !propios.includes(s));
+    const op = s => `<option value="${s.id}"${Number(s.id) === Number(sel) ? ' selected' : ''}>${cliEsc(s.nombre)} · ${s.duracion_min} min${s.es_2pax ? ' · 2 personas' : ''}</option>`;
+    return propios.map(op).join('') + (otros.length ? `<optgroup label="No asignados a este profesional">${otros.map(op).join('')}</optgroup>` : '');
+  }
+  function hsCampoCita(n) { return document.querySelector(`#hs-modal-body [data-hc="${n}"]`); }
+  function hsAvisosHtml(avisos) {
+    return '<ul class="hs-avisos hs-avisos-modal">' + (avisos || []).filter(a => a.nivel !== 'bloquea').map(a =>
+      `<li class="hs-av hs-av-${a.nivel}">${cliEsc(a.mensaje)}</li>`).join('') + '</ul>';
+  }
+
+  // ---------- Nueva cita ----------
+  function hsAbrirNuevaCita(profId, fecha, hora) {
+    const p = hsProf(profId);
+    hsModalEstado = { modo: 'cita_nueva', confirmar: false, cliente: null };
+    const dia = hsAFecha(fecha).getUTCDay() || 7;
+    hsModalBase('Nueva cita', `${HS_DIAS_CORTO[dia - 1]} ${hsFechaCorta(fecha)}`, `
+      ${cliCampo('Cliente', `<div class="hs-picker"><input class="serv-input" data-hc="cliente_q" placeholder="Escribe nombre o teléfono" autocomplete="off">
+        <ul class="hs-picker-lista" data-hc="cliente_lista" style="display:none"></ul></div><div class="hs-cliente-sel" data-hc="cliente_sel"></div>`, true)}
+      ${cliCampo('Profesional', `<select class="serv-input" data-hc="prof">${hsOpcionesProf(profId)}</select>`, true)}
+      ${cliCampo('Servicio', `<select class="serv-input" data-hc="serv">${hsOpcionesServ(profId)}</select>`, true)}
+      <div class="hs-modal-horas">
+        ${cliCampo('Día', `<select class="serv-input" data-hc="fecha">${hsOpcionesDias(fecha)}</select>`, true)}
+        ${cliCampo('Hora', `<select class="serv-input" data-hc="hora">${hsOpcionesHora(7 * 60, 21 * 60, hora)}</select>`, true)}
+      </div>
+      <p class="bo-ayuda">El bono se aplica solo si el cliente tiene uno que cubra esta sesión.</p>
+      <div data-hc="avisos"></div>`, 'Crear cita');
+    hsCampoCita('prof').addEventListener('change', e => { hsCampoCita('serv').innerHTML = hsOpcionesServ(e.target.value); hsResetConfirmar(); });
+    ['serv', 'fecha', 'hora'].forEach(n => hsCampoCita(n).addEventListener('change', hsResetConfirmar));
+    const q = hsCampoCita('cliente_q');
+    q.addEventListener('input', () => hsBuscarCliente(q.value.trim()));
+    hsCampoCita('cliente_lista').addEventListener('mousedown', e => {
+      const li = e.target.closest('[data-cli-id]');
+      if (!li) return;
+      e.preventDefault();
+      hsModalEstado.cliente = { id: Number(li.dataset.cliId), nombre: li.dataset.cliNombre };
+      hsCampoCita('cliente_sel').innerHTML = `<strong>${cliEsc(li.dataset.cliNombre)}</strong> <button type="button" class="cb-btn" data-hc-quitar>Cambiar</button>`;
+      q.style.display = 'none'; hsCampoCita('cliente_lista').style.display = 'none';
+      hsResetConfirmar();
+    });
+    hsCampoCita('cliente_sel').addEventListener('click', e => {
+      if (!e.target.closest('[data-hc-quitar]')) return;
+      hsModalEstado.cliente = null; hsCampoCita('cliente_sel').innerHTML = ''; q.style.display = ''; q.value = ''; q.focus(); hsResetConfirmar();
+    });
+    setTimeout(() => q.focus(), 30);
+  }
+
+  function hsResetConfirmar() {
+    if (!hsModalEstado) return;
+    hsModalEstado.confirmar = false;
+    const av = hsCampoCita('avisos'); if (av) av.innerHTML = '';
+    const ok = document.getElementById('hs-modal-ok');
+    ok.textContent = hsModalEstado.modo === 'cita_mover' ? 'Mover cita' : 'Crear cita';
+    hsModalMsg('');
+  }
+
+  async function hsBuscarCliente(texto) {
+    const lista = hsCampoCita('cliente_lista');
+    if (!lista) return;
+    const pet = ++hsCliPeticion;
+    if (texto.length < 2) { lista.style.display = 'none'; lista.innerHTML = ''; return; }
+    try {
+      const datos = await boGet(`${CLIENTES_API_URL}?q=${encodeURIComponent(texto)}&inactivos=0`);
+      if (pet !== hsCliPeticion || !hsCampoCita('cliente_lista')) return;
+      const filas = (Array.isArray(datos) ? datos : []).filter(c => c.activo !== false).slice(0, 8);
+      lista.innerHTML = filas.length ? filas.map(c => {
+        const nombre = [c.nombre, c.apellidos].filter(Boolean).join(' ');
+        return `<li data-cli-id="${Number(c.id)}" data-cli-nombre="${cliEsc(nombre)}">${cliEsc(nombre)}<small>${cliEsc(cliFormatearTelefono(c.telefono) || 'sin teléfono')}</small></li>`;
+      }).join('') : '<li class="is-vacio">Ningún cliente activo coincide.</li>';
+      lista.style.display = '';
+    } catch (err) {
+      if (pet !== hsCliPeticion) return;
+      lista.innerHTML = '<li class="is-vacio">No se ha podido buscar. Inténtalo de nuevo.</li>';
+      lista.style.display = '';
+    }
+  }
+
+  // ---------- Ver una cita ----------
+  function hsAbrirCita(id) {
+    const c = hsCita(id);
+    if (!c) return;
+    const p = hsProf(c.profesional_id);
+    const dia = hsAFecha(c.fecha).getUTCDay() || 7;
+    const empezada = `${c.fecha}T${c.hora_inicio}` <= (hs.datos.ahora || '');
+    const estados = { confirmada: 'Confirmada', realizada: 'Realizada', no_show: 'No se presentó' };
+    hsModalEstado = { modo: 'cita_ver', id: c.id };
+    hsModalBase(c.cliente, `${p ? p.nombre : ''} · ${HS_DIAS_CORTO[dia - 1]} ${hsFechaCorta(c.fecha)} · ${c.hora_inicio}–${c.hora_fin}`, `
+      <ul class="hs-ficha-cita">
+        <li><span>Servicio</span>${cliEsc(c.servicio)}</li>
+        <li><span>Estado</span>${estados[c.estado] || cliEsc(c.estado)}${c.origen === 'bot' ? ' · reservada por el bot' : ''}</li>
+        <li><span>Bono</span>${c.bono_id ? 'Sí, descuenta del bono' : 'Sin bono (sesión suelta)'}</li>
+        ${c.dificil ? '<li class="is-dificil"><span>Aviso</span>Cliente difícil</li>' : ''}
+        ${c.sin_telefono ? '<li><span>Aviso</span>Sin teléfono: no recibe recordatorios</li>' : ''}
+        ${c.fuera_tramo ? '<li class="is-dificil"><span>Aviso</span>Fuera de los tramos publicados del profesional</li>' : ''}
+      </ul>
+      <div class="hs-cita-acciones">
+        ${c.estado === 'confirmada' && !empezada ? '<button type="button" class="cb-btn" data-hc-accion="mover">Mover</button><button type="button" class="cb-btn" data-hc-accion="cancelar">Cancelar cita</button>' : ''}
+        ${c.estado === 'confirmada' && empezada ? '<button type="button" class="cb-btn" data-hc-accion="no_show">No se presentó</button>' : ''}
+        ${c.estado === 'no_show' ? '<button type="button" class="cb-btn" data-hc-accion="deshacer_no_show">Deshacer «No se presentó»</button>' : ''}
+        <button type="button" class="cb-btn" data-hc-accion="ficha">Ver ficha del cliente</button>
+      </div>`, null, null);
+    document.querySelector('#hs-modal-body .hs-cita-acciones').addEventListener('click', e => {
+      const b = e.target.closest('[data-hc-accion]');
+      if (!b) return;
+      const acc = b.dataset.hcAccion;
+      if (acc === 'mover') hsAbrirMover(c);
+      else if (acc === 'cancelar') hsAbrirCancelar(c);
+      else if (acc === 'no_show' || acc === 'deshacer_no_show') hsNoShow(c, acc === 'deshacer_no_show');
+      else if (acc === 'ficha') { hsCerrarModal(); cliAbrirFicha(Number(c.cliente_id), 'editar'); }
+    });
+  }
+
+  function hsAbrirMover(c) {
+    hsModalEstado = { modo: 'cita_mover', id: c.id, confirmar: false };
+    hsModalBase('Mover cita', `${c.cliente} · ${c.servicio}`, `
+      ${cliCampo('Profesional', `<select class="serv-input" data-hc="prof">${hsOpcionesProf(c.profesional_id)}</select>`, true)}
+      <div class="hs-modal-horas">
+        ${cliCampo('Día', `<select class="serv-input" data-hc="fecha">${hsOpcionesDias(c.fecha)}</select>`, true)}
+        ${cliCampo('Hora', `<select class="serv-input" data-hc="hora">${hsOpcionesHora(7 * 60, 21 * 60, c.hora_inicio)}</select>`, true)}
+      </div>
+      <p class="bo-ayuda">Mover desde aquí no genera penalización. Para otra semana, cambia de semana y vuelve a moverla desde allí.</p>
+      <div data-hc="avisos"></div>`, 'Mover cita');
+    ['prof', 'fecha', 'hora'].forEach(n => hsCampoCita(n).addEventListener('change', hsResetConfirmar));
+  }
+
+  function hsAbrirCancelar(c) {
+    hsModalEstado = { modo: 'cita_cancelar', id: c.id };
+    hsModalBase('Cancelar cita', `${c.cliente} · ${hsFechaCorta(c.fecha)} · ${c.hora_inicio}`, `
+      <label class="hs-radio"><input type="radio" name="hs-motivo" value="cliente" checked> La cancela el cliente <small>Se aplica la penalización por antelación (≥24 h sin coste, 20–24 h 50 %, menos de 20 h 100 %).</small></label>
+      <label class="hs-radio"><input type="radio" name="hs-motivo" value="centro"> La cancela el centro <small>Sin penalización (falta el profesional, cierre…).</small></label>
+      <p class="bo-ayuda">Si es una reserva fija, solo se cancela este día; la reserva sigue las demás semanas.</p>`, 'Cancelar cita');
+  }
+
+  async function hsNoShow(c, deshacer) {
+    if (!deshacer && !confirm(`¿Marcar que ${c.cliente} no se presentó?\n\nSe registra una penalización del 100 % (la gestionas en Cancelaciones y Modificaciones).`)) return;
+    try {
+      const r = await boPost(HS_ACCION_URL, { accion: 'no_show', cita_id: c.id, deshacer: !!deshacer });
+      if (!r.ok) { hsModalMsg(r.mensaje || 'No se ha podido hacer.', 'error'); return; }
+      hsCerrarModal(); hsToast(deshacer ? 'Desmarcado «No se presentó».' : 'Marcada como «No se presentó».');
+      hsCargar(hs.semana);
+    } catch (err) { hsModalMsg('No se ha podido conectar con el servidor. Inténtalo de nuevo.', 'error'); }
+  }
+
+  // ---------- Botón principal de los modales de cita ----------
+  async function hsCitaOk() {
+    const est = hsModalEstado;
+    if (!est || hs.ocupado) return;
+    let cuerpo;
+    if (est.modo === 'cita_nueva') {
+      if (!est.cliente) { hsModalMsg('Elige el cliente.', 'error'); return; }
+      if (!hsCampoCita('serv').value) { hsModalMsg('Elige el servicio.', 'error'); return; }
+      cuerpo = { accion: 'crear_cita', cliente_id: est.cliente.id, profesional_id: Number(hsCampoCita('prof').value),
+        servicio_id: Number(hsCampoCita('serv').value), fecha: hsCampoCita('fecha').value, hora_inicio: hsCampoCita('hora').value, confirmar: est.confirmar };
+    } else if (est.modo === 'cita_mover') {
+      cuerpo = { accion: 'mover_cita', cita_id: est.id, profesional_id: Number(hsCampoCita('prof').value),
+        fecha: hsCampoCita('fecha').value, hora_inicio: hsCampoCita('hora').value, confirmar: est.confirmar };
+    } else if (est.modo === 'cita_cancelar') {
+      const m = document.querySelector('#hs-modal-body input[name="hs-motivo"]:checked');
+      cuerpo = { accion: 'cancelar_cita', cita_id: est.id, motivo: m ? m.value : '' };
+    } else return;
+    const ok = document.getElementById('hs-modal-ok');
+    ok.disabled = true; hsModalMsg('Guardando…');
+    try {
+      const r = await boPost(HS_ACCION_URL, cuerpo);
+      if (r.ok) {
+        hsCerrarModal(); hsToast(r.mensaje || 'Hecho.');
+        await hsCargar(hs.semana);
+        return;
+      }
+      if (r.requiere_confirmacion) {
+        est.confirmar = true;
+        const av = hsCampoCita('avisos'); if (av) av.innerHTML = hsAvisosHtml(r.avisos);
+        ok.textContent = est.modo === 'cita_mover' ? 'Mover igualmente' : 'Crear igualmente';
+        hsModalMsg('Revisa los avisos. Si está bien así, pulsa de nuevo para confirmar.', 'error');
+        return;
+      }
+      hsModalMsg(r.mensaje || 'No se ha podido guardar.', 'error');
+      if (r.error === 'hueco_ocupado') hsCargar(hs.semana);
+    } catch (err) {
+      hsModalMsg('No se ha podido conectar con el servidor. Inténtalo de nuevo.', 'error');
+    } finally {
+      ok.disabled = false;
+    }
+  }
+  function hsCitaSecundario() { /* reservado: los modales de cita no usan el botón secundario */ }
