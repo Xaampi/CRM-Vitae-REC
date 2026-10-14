@@ -3657,6 +3657,7 @@
   function hsAplicar(r) {
     const semanaAnterior = hs.semana;
     hs.datos = r;
+    hs.cargadoEn = Date.now();
     hs.semana = r.semana;
     hs.tramos = (r.tramos || []).map(t => ({ ...t }));
     if (semanaAnterior !== r.semana) {
@@ -3706,6 +3707,9 @@
     banner.className = 'hs-banner' + (d.estado === 'sin_publicar' ? ' is-alerta' : '');
     banner.style.display = html ? '' : 'none';
 
+    hsRenderFijas();
+    hsRenderRetenidos();
+    hsRenderPend();
     hsRenderDias();
     hsRenderGrid();
     hsRenderAvisos();
@@ -3761,11 +3765,20 @@
     const cols = profs.map(p => {
       const tramos = hs.tramos.map((t, i) => ({ t, i })).filter(x => x.t.fecha === fecha && Number(x.t.profesional_id) === Number(p.id));
       const citas = (hs.datos.citas || []).filter(c => c.fecha === fecha && Number(c.profesional_id) === Number(p.id));
+      const fijasProf = modoTramos ? [] : (hs.datos.fijas_previstas || []).filter(f => f.fecha === fecha && Number(f.profesional_id) === Number(p.id));
       const bloques = tramos.map(({ t, i }) => {
         const top = (hsMin(t.hora_inicio) - ini) * HS_PX_MIN;
         const h = (hsMin(t.hora_fin) - hsMin(t.hora_inicio)) * HS_PX_MIN;
         const etiqueta = t.tipo === 'trabajo' ? (p.ofertable_por_bot ? 'Libre' : 'Trabaja (no se ofrece)') : (t.texto || HS_TIPOS[t.tipo]);
-        if (!modoTramos) return `<div class="hs-tramo hs-tramo-${t.tipo} is-fondo" style="top:${top}px;height:${h}px"><span class="hs-tramo-h">${t.hora_inicio}–${t.hora_fin}</span><span class="hs-tramo-t">${cliEsc(etiqueta)}</span></div>`;
+        if (!modoTramos) {
+          // La etiqueta del tramo (horas + «Libre») solo se pinta si ninguna cita ni reserva fija la tapa;
+          // si la tapan, la información sigue en el eje de horas, en la propia cita y en el aviso al pasar el ratón.
+          const tIni = hsMin(t.hora_inicio);
+          const tapada = citas.some(c => hsMin(c.hora_inicio) < tIni + 26 && hsMin(c.hora_fin) > tIni)
+            || fijasProf.some(f => hsMin(f.hora_inicio) < tIni + 26 && hsMin(f.hora_fin) > tIni);
+          const tip = cliEsc(HS_TIPOS[t.tipo] + ' ' + t.hora_inicio + '–' + t.hora_fin + (t.texto ? ' · ' + t.texto : ''));
+          return `<div class="hs-tramo hs-tramo-${t.tipo} is-fondo" style="top:${top}px;height:${h}px" title="${tip}">${tapada ? '' : `<span class="hs-tramo-h">${t.hora_inicio}–${t.hora_fin}</span><span class="hs-tramo-t">${cliEsc(etiqueta)}</span>`}</div>`;
+        }
         return `<button class="hs-tramo hs-tramo-${t.tipo}" style="top:${top}px;height:${h}px" data-hs-tramo="${i}" ${editable ? '' : 'disabled'}
                   title="${cliEsc(HS_TIPOS[t.tipo] + ' ' + t.hora_inicio + '–' + t.hora_fin + (t.texto ? ' · ' + t.texto : ''))}">
                   <span class="hs-tramo-h">${t.hora_inicio}–${t.hora_fin}</span><span class="hs-tramo-t">${cliEsc(etiqueta)}</span></button>`;
@@ -3780,9 +3793,17 @@
                   title="${cliEsc(c.cliente + ' · ' + c.servicio + ' · ' + c.hora_inicio + '–' + c.hora_fin + (c.fuera_tramo ? ' · fuera de tramo' : ''))}">
                   <span class="hs-tramo-h">${c.hora_inicio}–${c.hora_fin}${estado}</span><span class="hs-tramo-t${c.dificil ? ' is-dificil' : ''}">${cliEsc(c.cliente)}</span></button>`;
       }).join('');
+      const fantasmas = fijasProf.map(f => {
+          const top = (hsMin(f.hora_inicio) - ini) * HS_PX_MIN;
+          const h = (hsMin(f.hora_fin) - hsMin(f.hora_inicio)) * HS_PX_MIN;
+          const conf = f.estado === 'conflicto';
+          return `<button class="hs-fija${conf ? ' is-conflicto' : ''}" style="top:${top}px;height:${h}px;${conf ? '' : 'border-color:' + hsBordeFija(color) + ';'}" data-hs-fija="${Number(f.reserva_fija_id)}|${cliEsc(f.fecha)}"
+                    title="${cliEsc('Reserva fija · ' + f.cliente + ' · ' + f.hora_inicio + '–' + f.hora_fin + (conf ? ' · ' + hsMotivoFija(f.motivo) : ' · aún sin cita'))}">
+                    <span class="hs-tramo-h">${f.hora_inicio}–${f.hora_fin} · fija${conf ? ' ⚠' : ''}</span><span class="hs-tramo-t${f.dificil ? ' is-dificil' : ''}">${cliEsc(f.cliente)}</span></button>`;
+        }).join('');
       return `<div class="hs-col">
         <div class="hs-col-head"><span class="hs-color" style="background:${color}"></span><span class="hs-col-nom">${cliEsc(p.nombre)}</span>${p.ofertable_por_bot ? '' : '<span class="hs-nobot" title="El bot no ofrece sus huecos">no lo ofrece el bot</span>'}</div>
-        <div class="hs-col-body${editable ? ' is-editable' : ''}" style="height:${alto}px" data-hs-prof="${p.id}">${bloques}${marcasCitas}</div>
+        <div class="hs-col-body${editable ? ' is-editable' : ''}" style="height:${alto}px" data-hs-prof="${p.id}">${bloques}${fantasmas}${marcasCitas}</div>
       </div>`;
     }).join('');
     grid.innerHTML = `<div class="hs-col hs-col-horas"><div class="hs-col-head"></div><div style="height:${alto}px">${horas}</div></div>${cols}`;
@@ -3817,6 +3838,141 @@
         <td class="cb-num">${mn || mx ? `${mn ? hsNum(mn) : '—'}–${mx ? hsNum(mx) : '—'} h` : '—'}</td></tr>`;
     }).join('');
     document.getElementById('hs-resumen').innerHTML = filas;
+  }
+
+  // ---------- Incremento 3: reservas fijas previstas y huecos retenidos ----------
+  const HS_MOTIVOS_FIJA = {
+    inactivo: 'el cliente o el profesional está inactivo',
+    excluido: 'el cliente tiene excluido a este profesional',
+    fuera_tramo: 'el profesional no trabaja a esa hora esta semana',
+    prof_ocupado: 'el profesional ya tiene otra cita a esa hora',
+    cliente_ocupado: 'el cliente ya tiene otra cita a esa hora'
+  };
+  // Borde discontinuo con el color del profesional, pero oscurecido si es muy claro para que se vea sobre fondo amarillo/blanco.
+  function hsBordeFija(hex) {
+    const n = parseInt(String(hex).slice(1), 16);
+    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    if (lum > 150) { const k = 150 / lum; r = Math.round(r * k * 0.8); g = Math.round(g * k * 0.8); b = Math.round(b * k * 0.8); }
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  function hsMotivoFija(m) { return HS_MOTIVOS_FIJA[m] || 'no se puede crear'; }
+  function hsDiaFecha(iso) { return `${HS_DIAS_CORTO[(hsAFecha(iso).getUTCDay() || 7) - 1]} ${hsFechaCorta(iso)}`; }
+
+  function hsRenderFijas() {
+    const cont = document.getElementById('hs-fijas');
+    const d = hs.datos;
+    const fijas = d.fijas_previstas || [];
+    const crear = fijas.filter(f => f.estado === 'crear');
+    const conf = fijas.filter(f => f.estado === 'conflicto');
+    if (!d.editable && !crear.length && !conf.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+    if (!crear.length && !conf.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+    const publicada = d.estado === 'publicada';
+    let texto = '';
+    if (crear.length) {
+      texto = publicada
+        ? `<strong>${crear.length} reserva${crear.length > 1 ? 's fijas' : ' fija'} sin cita</strong> esta semana (se ven en la rejilla con borde discontinuo).`
+        : `<strong>${crear.length} reserva${crear.length > 1 ? 's fijas' : ' fija'}</strong> se convertirán en cita al publicar la semana (se ven en la rejilla con borde discontinuo).`;
+    }
+    if (conf.length) {
+      texto += `${texto ? ' ' : ''}<strong>${conf.length}</strong> no se ${conf.length > 1 ? 'podrán' : 'podrá'} crear (en rojo).`;
+    }
+    const detalle = conf.length ? `<details class="hs-fijas-det"><summary>Ver las que no se pueden crear</summary><ul>${conf.map(f =>
+      `<li>${cliEsc(f.cliente)} · ${hsDiaFecha(f.fecha)} ${cliEsc(f.hora_inicio)}${hsProf(f.profesional_id) ? ' · ' + cliEsc(hsProf(f.profesional_id).nombre) : ''}: ${cliEsc(hsMotivoFija(f.motivo))}</li>`).join('')}</ul></details>` : '';
+    const boton = (publicada && crear.length && d.editable)
+      ? `<button class="cb-btn is-pri" id="hs-crear-fijas"${hs.ocupado ? ' disabled' : ''}>Crear citas de las reservas fijas</button>` : '';
+    cont.className = 'hs-fijas' + (conf.length ? ' has-conflicto' : '');
+    cont.innerHTML = `<span>${texto}</span>${boton}${detalle}`;
+    cont.style.display = '';
+  }
+
+  async function hsCrearFijas() {
+    if (hs.ocupado || !hs.semana) return;
+    hs.ocupado = true; hsRender();
+    try {
+      const r = await boPost(HS_ACCION_URL, { accion: 'generar_fijas', semana: hs.semana });
+      hs.ocupado = false;
+      if (r && r.ok) { await hsCargar(hs.semana); hsToast(r.mensaje || 'Citas creadas.'); }
+      else alert((r && r.mensaje) || 'No se han podido crear las citas.');
+    } catch (err) {
+      alert('No se ha podido conectar con el servidor. Inténtalo de nuevo.');
+    } finally {
+      hs.ocupado = false; hsRender();
+    }
+  }
+
+  // Cuenta atrás de los huecos retenidos: se calcula con los minutos que dijo el servidor al cargar
+  // más el tiempo que ha pasado desde entonces (no depende de la hora del ordenador).
+  function hsMinRestantes(r) {
+    return Number(r.minutos_restantes) - Math.floor((Date.now() - (hs.cargadoEn || Date.now())) / 60000);
+  }
+  function hsTextoRestante(min) {
+    if (min <= 0) return 'ya puede verlo el bot';
+    const h = Math.floor(min / 60), m = min % 60;
+    return 'el bot lo verá en ' + (h ? `${h} h ${String(m).padStart(2, '0')} min` : `${m} min`);
+  }
+  function hsRetEnSemana(r) {
+    return !!hs.datos.editable && hs.modo === 'citas' && r.fecha >= hs.semana && r.fecha <= hsSumar(hs.semana, 6) && r.fecha >= (hs.datos.hoy || '');
+  }
+  function hsRenderRetenidos() {
+    const cont = document.getElementById('hs-retenidos');
+    const lista = hs.datos.huecos_retenidos || [];
+    if (!lista.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+    cont.innerHTML = `<h4>Huecos retenidos (${lista.length})</h4>
+      <p class="hs-ret-ayuda">Una reserva fija cancelada deja el hueco libre. Durante unas horas el bot no lo ofrece, por si quieres dárselo a otro alumno; pasado ese tiempo se libera solo.</p>` +
+      lista.map(r => {
+        const p = hsProf(r.profesional_id);
+        return `<div class="hs-ret">
+          <div class="hs-ret-info"><span><strong>${hsDiaFecha(r.fecha)} · ${cliEsc(r.hora_inicio)}–${cliEsc(r.hora_fin)}</strong>${p ? ' · ' + cliEsc(p.nombre) : ''}</span>
+            <small>Reserva fija de ${cliEsc(r.cliente)}</small></div>
+          <span class="hs-ret-badge" data-hs-ret-min="${Number(r.id)}">${cliEsc(hsTextoRestante(hsMinRestantes(r)))}</span>
+          ${hsRetEnSemana(r) ? `<button class="cb-btn is-pri" data-hs-ret-asignar="${Number(r.id)}"${hs.ocupado ? ' disabled' : ''}>Asignar a alguien</button>` : ''}
+          <button class="cb-btn" data-hs-liberar="${Number(r.id)}"${hs.ocupado ? ' disabled' : ''}>Liberar al bot ahora</button></div>`;
+      }).join('');
+    cont.style.display = '';
+  }
+  setInterval(() => {
+    if (!hs.datos || !(hs.datos.huecos_retenidos || []).length) return;
+    let vencido = false;
+    (hs.datos.huecos_retenidos || []).forEach(r => {
+      const el = document.querySelector(`[data-hs-ret-min="${Number(r.id)}"]`);
+      const min = hsMinRestantes(r);
+      if (el) el.textContent = hsTextoRestante(min);
+      if (min <= 0) vencido = true;
+    });
+    if (vencido && !hs.ocupado && document.getElementById('view-horario').offsetParent !== null) hsCargar(hs.semana);
+  }, 30000);
+
+  async function hsLiberarHueco(id) {
+    if (hs.ocupado) return;
+    if (!confirm('¿Liberar este hueco ahora? El bot podrá ofrecerlo enseguida.')) return;
+    hs.ocupado = true; hsRender();
+    try {
+      const r = await boPost(HS_ACCION_URL, { accion: 'liberar_hueco', id });
+      hs.ocupado = false;
+      await hsCargar(hs.semana);
+      hsToast((r && r.mensaje) || 'Hueco liberado.');
+    } catch (err) {
+      alert('No se ha podido conectar con el servidor. Inténtalo de nuevo.');
+    } finally {
+      hs.ocupado = false; hsRender();
+    }
+  }
+
+  function hsInfoFija(clave) {
+    const [id, fecha] = String(clave).split('|');
+    const f = (hs.datos.fijas_previstas || []).find(x => Number(x.reserva_fija_id) === Number(id) && x.fecha === fecha);
+    if (!f) return;
+    const p = hsProf(f.profesional_id);
+    const conf = f.estado === 'conflicto';
+    hsModalEstado = { modo: 'fija-info' };
+    hsModalBase(conf ? 'Reserva fija que no se puede crear' : 'Reserva fija sin cita',
+      `${f.cliente} · ${hsDiaFecha(f.fecha)} ${f.hora_inicio}–${f.hora_fin}${p ? ' · ' + p.nombre : ''}`,
+      `<p class="hs-modal-sub">${conf
+        ? 'No se creará la cita porque ' + cliEsc(hsMotivoFija(f.motivo)) + '. Puedes poner la cita a mano en otro hueco desde la rejilla.'
+        : (hs.datos.estado === 'publicada'
+          ? 'Todavía no tiene cita. Pulsa «Crear citas de las reservas fijas» para crearla.'
+          : 'Se creará como cita al publicar la semana.')}</p>`, '', '');
   }
 
   // ---------- Guardar el borrador (cada cambio) ----------
@@ -4020,6 +4176,8 @@
     if (!hs.semana) return;
     hsCopiar(hsSumar(hs.semana, -7), `¿Copiar los tramos de la semana del ${hsFechaCorta(hsSumar(hs.semana, -7))}?`);
   });
+  document.getElementById('hs-desde-plantilla').addEventListener('click', () =>
+    hsCopiar('plantilla', '¿Rellenar la semana con la plantilla semanal (el horario habitual de cada profesional)?'));
   document.getElementById('hs-desde-disp').addEventListener('click', () =>
     hsCopiar('disponibilidad', '¿Rellenar la semana con la disponibilidad habitual de cada profesional?'));
   document.getElementById('hs-vaciar').addEventListener('click', () =>
@@ -4036,6 +4194,10 @@
     if ((el = t('[data-hs-modo]'))) { hs.modo = el.dataset.hsModo; hsRender(); return; }
     if (!hs.datos || hs.ocupado) return;
     if ((el = t('[data-hs-cita]'))) { hsAbrirCita(Number(el.dataset.hsCita)); return; }
+    if ((el = t('#hs-crear-fijas'))) { hsCrearFijas(); return; }
+    if ((el = t('[data-hs-liberar]'))) { hsLiberarHueco(Number(el.dataset.hsLiberar)); return; }
+    if ((el = t('[data-hs-fija]'))) { hsInfoFija(el.dataset.hsFija); return; }
+    if (hsClicPend(t)) return;
     if (hs.modo === 'citas') {
       if ((el = t('.hs-col-body.is-editable'))) {
         const rect = el.getBoundingClientRect();
@@ -4059,6 +4221,7 @@
 
   document.getElementById('hs-modal-ok').addEventListener('click', () => {
     if (hsModalEstado && hsModalEstado.modo && hsModalEstado.modo.startsWith('cita')) { hsCitaOk(); return; }
+    if (hsModalEstado && hsModalEstado.modo && hsModalEstado.modo.startsWith('pend_')) { hsPendOk(); return; }
     if (hsModalEstado && hsModalEstado.modo === 'publicar') {
       const bloquea = hsModalEstado.bloquea;
       hsCerrarModal();
@@ -4070,6 +4233,7 @@
   });
   document.getElementById('hs-modal-borrar').addEventListener('click', () => {
     if (hsModalEstado && hsModalEstado.modo && hsModalEstado.modo.startsWith('cita')) { hsCitaSecundario(); return; }
+    if (hsModalEstado && hsModalEstado.modo && hsModalEstado.modo.startsWith('pend_')) { hsPendSecundario(); return; }
     hsModalGuardar(true);
   });
   document.getElementById('hs-modal-cancelar').addEventListener('click', () => { hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; });
@@ -4105,7 +4269,7 @@
     const ok = document.getElementById('hs-modal-ok');
     ok.textContent = okTexto || ''; ok.style.display = okTexto ? '' : 'none'; ok.disabled = false;
     const sec = document.getElementById('hs-modal-borrar');
-    sec.textContent = secTexto || ''; sec.style.display = secTexto ? '' : 'none';
+    sec.textContent = secTexto || ''; sec.style.display = secTexto ? '' : 'none'; sec.classList.remove('is-neutro');
     document.getElementById('hs-modal-cancelar').textContent = 'Cerrar';
     hsModalMsg('');
     document.getElementById('hs-modal').classList.add('open');
@@ -4140,11 +4304,14 @@
   // ---------- Nueva cita ----------
   function hsAbrirNuevaCita(profId, fecha, hora) {
     const p = hsProf(profId);
-    hsModalEstado = { modo: 'cita_nueva', confirmar: false, cliente: null };
+    hsModalEstado = { modo: 'cita_nueva', confirmar: false, cliente: null, pendiente_id: null };
     const dia = hsAFecha(fecha).getUTCDay() || 7;
+    const pends = hsPendientesColocables().map(x => ({ x, encaja: hsEncajaPend(x, profId, fecha, hora) })).sort((a, b) => Number(b.encaja) - Number(a.encaja));
     hsModalBase('Nueva cita', `${HS_DIAS_CORTO[dia - 1]} ${hsFechaCorta(fecha)}`, `
       ${cliCampo('Cliente', `<div class="hs-picker"><input class="serv-input" data-hc="cliente_q" placeholder="Escribe nombre o teléfono" autocomplete="off">
         <ul class="hs-picker-lista" data-hc="cliente_lista" style="display:none"></ul></div><div class="hs-cliente-sel" data-hc="cliente_sel"></div>`, true)}
+      ${pends.length ? cliCampo('¿Es para alguien de pendientes?', `<select class="serv-input" data-hc="pend"><option value="">No, elijo yo al cliente</option>${pends.map(o =>
+        `<option value="${Number(o.x.id)}">${o.encaja ? '✓ ' : ''}${cliEsc(o.x.cliente)} · ${cliEsc(o.x.servicio)}</option>`).join('')}</select><small class="hs-pend-ayuda">✓ = encaja con este profesional, día y hora.</small>`) : ''}
       ${cliCampo('Profesional', `<select class="serv-input" data-hc="prof">${hsOpcionesProf(profId)}</select>`, true)}
       ${cliCampo('Servicio', `<select class="serv-input" data-hc="serv">${hsOpcionesServ(profId)}</select>`, true)}
       <div class="hs-modal-horas">
@@ -4155,21 +4322,19 @@
       <div data-hc="avisos"></div>`, 'Crear cita');
     hsCampoCita('prof').addEventListener('change', e => { hsCampoCita('serv').innerHTML = hsOpcionesServ(e.target.value); hsResetConfirmar(); });
     ['serv', 'fecha', 'hora'].forEach(n => hsCampoCita(n).addEventListener('change', hsResetConfirmar));
-    const q = hsCampoCita('cliente_q');
-    q.addEventListener('input', () => hsBuscarCliente(q.value.trim()));
-    hsCampoCita('cliente_lista').addEventListener('mousedown', e => {
-      const li = e.target.closest('[data-cli-id]');
-      if (!li) return;
-      e.preventDefault();
-      hsModalEstado.cliente = { id: Number(li.dataset.cliId), nombre: li.dataset.cliNombre };
-      hsCampoCita('cliente_sel').innerHTML = `<strong>${cliEsc(li.dataset.cliNombre)}</strong> <button type="button" class="cb-btn" data-hc-quitar>Cambiar</button>`;
-      q.style.display = 'none'; hsCampoCita('cliente_lista').style.display = 'none';
+    hsMontarPicker();
+    const selPend = hsCampoCita('pend');
+    if (selPend) selPend.addEventListener('change', () => {
+      const x = hsPend(selPend.value);
+      hsModalEstado.pendiente_id = x ? x.id : null;
+      if (x) {
+        if (x.cliente_id) hsFijarCliente({ id: Number(x.cliente_id), nombre: x.cliente });
+        const sv = hsCampoCita('serv');
+        if ([...sv.options].some(o => Number(o.value) === Number(x.servicio_id))) sv.value = String(x.servicio_id);
+      }
       hsResetConfirmar();
     });
-    hsCampoCita('cliente_sel').addEventListener('click', e => {
-      if (!e.target.closest('[data-hc-quitar]')) return;
-      hsModalEstado.cliente = null; hsCampoCita('cliente_sel').innerHTML = ''; q.style.display = ''; q.value = ''; q.focus(); hsResetConfirmar();
-    });
+    const q = hsCampoCita('cliente_q');
     setTimeout(() => q.focus(), 30);
   }
 
@@ -4256,6 +4421,7 @@
     hsModalBase('Cancelar cita', `${c.cliente} · ${hsFechaCorta(c.fecha)} · ${c.hora_inicio}`, `
       <label class="hs-radio"><input type="radio" name="hs-motivo" value="cliente" checked> La cancela el cliente <small>Se aplica la penalización por antelación (≥24 h sin coste, 20–24 h 50 %, menos de 20 h 100 %).</small></label>
       <label class="hs-radio"><input type="radio" name="hs-motivo" value="centro"> La cancela el centro <small>Sin penalización (falta el profesional, cierre…).</small></label>
+      <label class="hs-radio"><input type="checkbox" data-hc="dejar"> Dejar pendiente de recolocar <small>La persona queda en la lista de pendientes para buscarle otro hueco.</small></label>
       <p class="bo-ayuda">Si es una reserva fija, solo se cancela este día; la reserva sigue las demás semanas.</p>`, 'Cancelar cita');
   }
 
@@ -4279,12 +4445,13 @@
       if (!hsCampoCita('serv').value) { hsModalMsg('Elige el servicio.', 'error'); return; }
       cuerpo = { accion: 'crear_cita', cliente_id: est.cliente.id, profesional_id: Number(hsCampoCita('prof').value),
         servicio_id: Number(hsCampoCita('serv').value), fecha: hsCampoCita('fecha').value, hora_inicio: hsCampoCita('hora').value, confirmar: est.confirmar };
+      if (est.pendiente_id) cuerpo.pendiente_id = est.pendiente_id;
     } else if (est.modo === 'cita_mover') {
       cuerpo = { accion: 'mover_cita', cita_id: est.id, profesional_id: Number(hsCampoCita('prof').value),
         fecha: hsCampoCita('fecha').value, hora_inicio: hsCampoCita('hora').value, confirmar: est.confirmar };
     } else if (est.modo === 'cita_cancelar') {
       const m = document.querySelector('#hs-modal-body input[name="hs-motivo"]:checked');
-      cuerpo = { accion: 'cancelar_cita', cita_id: est.id, motivo: m ? m.value : '' };
+      cuerpo = { accion: 'cancelar_cita', cita_id: est.id, motivo: m ? m.value : '', dejar_pendiente: !!document.querySelector('#hs-modal-body [data-hc="dejar"]:checked') };
     } else return;
     const ok = document.getElementById('hs-modal-ok');
     ok.disabled = true; hsModalMsg('Guardando…');
@@ -4311,3 +4478,348 @@
     }
   }
   function hsCitaSecundario() { /* reservado: los modales de cita no usan el botón secundario */ }
+
+  // ============================================================
+  // HORARIO SEMANAL — punto 13 · incremento 4: pendientes de colocar y sugerencia de hueco
+  // Acciones por la misma ruta (panel-horario-accion): crear_pendiente, editar_pendiente, cerrar_pendiente,
+  // pendiente_primero, sugerir_hueco, asignar_pendiente, ocultar_sin_cita.
+  // La lista llega en panel-horario: pendientes, sin_cita (aviso automático) y servicios_pendientes.
+  // Los filtros y el orden de las sugerencias los decide la base de datos.
+  // ============================================================
+  const HS_TIPOS_PEND = { cambia_hora: 'Cambia su hora', no_puede_hora: 'No puede venir a su hora', turnos: 'Turnos', mas_sesiones: 'Quiere más sesiones', persona_nueva: 'Persona nueva' };
+  const HS_PEND_CLAVE = 'vitaerec_hs_pend';
+
+  function hsPend(id) { return ((hs.datos && hs.datos.pendientes) || []).find(x => Number(x.id) === Number(id)); }
+  function hsPendientesColocables() { return ((hs.datos && hs.datos.pendientes) || []).filter(x => x.requiere_profesor); }
+  function hsPendVisible() {
+    if (hs.pendVisible === undefined) {
+      let v = null;
+      try { v = localStorage.getItem(HS_PEND_CLAVE); } catch (err) { v = null; }
+      hs.pendVisible = v !== 'oculto';
+    }
+    return hs.pendVisible;
+  }
+  function hsEsperaTexto(n) { return n <= 0 ? 'hoy' : (n === 1 ? '1 día' : n + ' días'); }
+
+  function hsEncajaPend(x, profId, fecha, hora) {
+    if (x.profesional_id && Number(x.profesional_id) !== Number(profId)) return false;
+    const sv = ((hs.datos && hs.datos.servicios_pendientes) || []).find(s => Number(s.id) === Number(x.servicio_id));
+    if (sv && sv.profesionales.length && !sv.profesionales.map(Number).includes(Number(profId))) return false;
+    const dia = hsAFecha(fecha).getUTCDay() || 7;
+    if (x.dias && x.dias.length && !x.dias.includes(dia)) return false;
+    const m = hsMin(hora);
+    if (x.franja === 'manana' && m >= 15 * 60) return false;
+    if (x.franja === 'tarde' && m < 15 * 60) return false;
+    return true;
+  }
+
+  // ---------- Panel lateral ----------
+  function hsPendTarjeta(x) {
+    const chips = [];
+    if (x.profesional) chips.push('con ' + x.profesional);
+    if (x.franja) chips.push(x.franja === 'manana' ? 'mañanas' : 'tardes');
+    if (x.dias && x.dias.length) chips.push(x.dias.map(n => HS_DIAS_CORTO[n - 1]).join(' '));
+    const off = hs.ocupado ? ' disabled' : '';
+    return `<div class="hs-pc${x.primero ? ' is-primero' : ''}" data-hs-pc="${Number(x.id)}">
+      <div class="hs-pc-top"><strong${x.dificil ? ' class="is-dificil"' : ''}>${cliEsc(x.cliente)}</strong>${x.primero ? '<span class="hs-pc-flag">Primero</span>' : ''}</div>
+      <div class="hs-pc-tipo">${cliEsc(HS_TIPOS_PEND[x.tipo] || x.tipo)} · espera ${hsEsperaTexto(Number(x.dias_espera))}</div>
+      <div class="hs-pc-serv">${cliEsc(x.servicio)} · ${Number(x.duracion_min)} min${x.requiere_profesor ? '' : ' · sin profesional'}</div>
+      ${chips.length ? `<div class="hs-pc-chips">${chips.map(c => `<span>${cliEsc(c)}</span>`).join('')}</div>` : ''}
+      ${x.sin_ficha ? '<div class="hs-pc-nota">Aún sin ficha de cliente</div>' : ''}
+      ${x.nota ? `<div class="hs-pc-nota">${cliEsc(x.nota)}</div>` : ''}
+      <div class="hs-pc-btns">
+        ${x.requiere_profesor ? `<button type="button" class="cb-btn is-pri" data-hs-pend-buscar="${Number(x.id)}"${off}>Buscar hueco</button>` : ''}
+        <button type="button" class="cb-btn" data-hs-pend-primero="${Number(x.id)}"${off}>${x.primero ? 'Quitar primero' : 'Poner primero'}</button>
+        <button type="button" class="cb-btn" data-hs-pend-editar="${Number(x.id)}"${off}>Editar</button>
+        <button type="button" class="cb-btn" data-hs-pend-resuelto="${Number(x.id)}"${off}>Resuelto</button>
+      </div></div>`;
+  }
+
+  const HS_MOTIVOS_SC = {
+    fija_conflicto: 'Su reserva fija no se ha podido crear',
+    fija_cancelada: 'Canceló su reserva fija esta semana',
+    fija: 'Tiene reserva fija pero no tiene cita'
+  };
+  function hsSinCitaTarjeta(x, i) {
+    const motivo = x.motivo === 'bono' ? `Bono con ${Number(x.sesiones_bono)} sesion${Number(x.sesiones_bono) === 1 ? '' : 'es'} y sin cita` : (HS_MOTIVOS_SC[x.motivo] || 'Sin cita');
+    const off = hs.ocupado ? ' disabled' : '';
+    return `<div class="hs-pc hs-sc">
+      <div class="hs-pc-top"><strong${x.dificil ? ' class="is-dificil"' : ''}>${cliEsc(x.cliente)}</strong></div>
+      <div class="hs-pc-tipo">${cliEsc(motivo)}</div>
+      ${x.ultima_cita ? `<div class="hs-pc-serv">Última cita: ${cliEsc(hsFechaCorta(x.ultima_cita))}</div>` : ''}
+      <div class="hs-pc-btns">
+        <button type="button" class="cb-btn" data-hs-sc-pasar="${i}"${off}>Pasar a pendientes</button>
+        <button type="button" class="cb-btn" data-hs-sc-ocultar="${Number(x.cliente_id)}"${off}>Ocultar esta semana</button>
+      </div></div>`;
+  }
+
+  function hsRenderPend() {
+    const d = hs.datos;
+    const cuerpo = document.getElementById('hs-cuerpo');
+    const aside = document.getElementById('hs-pend');
+    const tog = document.getElementById('hs-pend-toggle');
+    const lista = d.pendientes || [];
+    const sc = d.sin_cita || [];
+    const enCitas = hs.modo === 'citas';
+    const visible = enCitas && hsPendVisible();
+    cuerpo.classList.toggle('sin-pend', !visible);
+    aside.hidden = !visible;
+    tog.style.display = enCitas ? '' : 'none';
+    tog.textContent = 'Pendientes' + (lista.length ? ` (${lista.length})` : '');
+    tog.setAttribute('aria-expanded', visible ? 'true' : 'false');
+    tog.classList.toggle('is-activo', visible);
+    document.getElementById('hs-pend-n').textContent = lista.length ? `(${lista.length})` : '';
+    document.getElementById('hs-pend-add').disabled = hs.ocupado;
+    document.getElementById('hs-pend-lista').innerHTML = lista.length
+      ? lista.map(hsPendTarjeta).join('')
+      : '<p class="hs-pend-vacio">Nadie pendiente. Pulsa «+ Añadir», o al cancelar una cita marca «Dejar pendiente de recolocar».</p>';
+    document.getElementById('hs-sincita-n').textContent = sc.length ? `(${sc.length})` : '';
+    document.getElementById('hs-sincita-lista').innerHTML = sc.length
+      ? sc.map(hsSinCitaTarjeta).join('')
+      : '<p class="hs-pend-vacio">Nadie sin cita esta semana.</p>';
+  }
+
+  async function hsPendLlamar(cuerpo) {
+    hs.ocupado = true; hsRender();
+    try {
+      return await boPost(HS_ACCION_URL, cuerpo);
+    } catch (err) {
+      return { ok: false, mensaje: 'No se ha podido conectar con el servidor. Inténtalo de nuevo.' };
+    } finally {
+      hs.ocupado = false; hsRender();
+    }
+  }
+
+  // Clics del panel lateral y de «Asignar a alguien». Devuelve true si ha tratado el clic.
+  function hsClicPend(t) {
+    let el;
+    if ((el = t('#hs-pend-toggle'))) {
+      hs.pendVisible = !hsPendVisible();
+      try { localStorage.setItem(HS_PEND_CLAVE, hs.pendVisible ? 'visible' : 'oculto'); } catch (err) { /* sin almacenamiento */ }
+      hsRender(); return true;
+    }
+    if ((el = t('#hs-pend-add'))) { hsPendForm(null, null); return true; }
+    if ((el = t('[data-hs-pend-buscar]'))) { hsPendBuscar(Number(el.dataset.hsPendBuscar), 1); return true; }
+    if ((el = t('[data-hs-pend-primero]'))) { hsPendPrimero(Number(el.dataset.hsPendPrimero)); return true; }
+    if ((el = t('[data-hs-pend-editar]'))) { const x = hsPend(el.dataset.hsPendEditar); if (x) hsPendForm(x, null); return true; }
+    if ((el = t('[data-hs-pend-resuelto]'))) { hsPendResuelto(Number(el.dataset.hsPendResuelto)); return true; }
+    if ((el = t('[data-hs-sc-pasar]'))) { hsSinCitaPasar(Number(el.dataset.hsScPasar)); return true; }
+    if ((el = t('[data-hs-sc-ocultar]'))) { hsSinCitaOcultar(Number(el.dataset.hsScOcultar)); return true; }
+    if ((el = t('[data-hs-ret-asignar]'))) {
+      const r = (hs.datos.huecos_retenidos || []).find(x => Number(x.id) === Number(el.dataset.hsRetAsignar));
+      if (r) { hs.dia = hsAFecha(r.fecha).getUTCDay() || 7; hsRender(); hsAbrirNuevaCita(Number(r.profesional_id), r.fecha, r.hora_inicio); }
+      return true;
+    }
+    return false;
+  }
+
+  async function hsPendPrimero(id) {
+    const x = hsPend(id); if (!x) return;
+    const r = await hsPendLlamar({ accion: 'pendiente_primero', id, primero: !x.primero });
+    if (r && r.ok) { await hsCargar(hs.semana); hsToast(r.mensaje || 'Hecho.'); } else alert((r && r.mensaje) || 'No se ha podido hacer.');
+  }
+  async function hsPendResuelto(id) {
+    const x = hsPend(id); if (!x) return;
+    if (!confirm(`¿Marcar a ${x.cliente} como resuelto?\n\nYa no saldrá en pendientes (úsalo si ya le has dado hueco por otro lado).`)) return;
+    const r = await hsPendLlamar({ accion: 'cerrar_pendiente', id, estado: 'resuelto' });
+    if (r && r.ok) { await hsCargar(hs.semana); hsToast(r.mensaje || 'Hecho.'); } else alert((r && r.mensaje) || 'No se ha podido hacer.');
+  }
+  async function hsSinCitaOcultar(clienteId) {
+    const r = await hsPendLlamar({ accion: 'ocultar_sin_cita', cliente_id: clienteId, semana: hs.semana });
+    if (r && r.ok) { await hsCargar(hs.semana); } else alert((r && r.mensaje) || 'No se ha podido hacer.');
+  }
+  function hsSinCitaPasar(i) {
+    const x = (hs.datos.sin_cita || [])[i]; if (!x) return;
+    const tipo = x.motivo === 'bono' ? 'mas_sesiones' : (x.motivo === 'fija_cancelada' ? 'no_puede_hora' : 'cambia_hora');
+    hsPendForm(null, { cliente_id: x.cliente_id, cliente: x.cliente, servicio_id: x.servicio_id, tipo });
+  }
+
+  // ---------- Selector de cliente (compartido con «Nueva cita») ----------
+  function hsFijarCliente(c) {
+    if (!hsModalEstado) return;
+    hsModalEstado.cliente = c;
+    const q = hsCampoCita('cliente_q'), sel = hsCampoCita('cliente_sel'), lista = hsCampoCita('cliente_lista');
+    if (!q || !sel || !lista) return;
+    if (c) {
+      sel.innerHTML = `<strong>${cliEsc(c.nombre)}</strong> <button type="button" class="cb-btn" data-hc-quitar>Cambiar</button>`;
+      q.style.display = 'none'; lista.style.display = 'none';
+    } else {
+      sel.innerHTML = ''; q.style.display = ''; q.value = ''; q.focus();
+    }
+    const nl = hsCampoCita('nombre_libre');
+    if (nl) nl.closest('.config-field').style.display = c ? 'none' : '';
+    if (hsModalEstado.modo && hsModalEstado.modo.startsWith('cita')) hsResetConfirmar();
+  }
+  function hsMontarPicker() {
+    const q = hsCampoCita('cliente_q');
+    if (!q) return;
+    q.addEventListener('input', () => hsBuscarCliente(q.value.trim()));
+    hsCampoCita('cliente_lista').addEventListener('mousedown', e => {
+      const li = e.target.closest('[data-cli-id]');
+      if (!li) return;
+      e.preventDefault();
+      hsFijarCliente({ id: Number(li.dataset.cliId), nombre: li.dataset.cliNombre });
+    });
+    hsCampoCita('cliente_sel').addEventListener('click', e => {
+      if (e.target.closest('[data-hc-quitar]')) hsFijarCliente(null);
+    });
+  }
+  function hsPickerHtml() {
+    return `<div class="hs-picker"><input class="serv-input" data-hc="cliente_q" placeholder="Escribe nombre o teléfono" autocomplete="off">
+      <ul class="hs-picker-lista" data-hc="cliente_lista" style="display:none"></ul></div><div class="hs-cliente-sel" data-hc="cliente_sel"></div>`;
+  }
+
+  // ---------- Añadir / editar pendiente ----------
+  function hsPendForm(x, pre) {
+    const base = x || pre || {};
+    hsModalEstado = { modo: 'pend_form', id: x ? x.id : null, cliente: base.cliente_id ? { id: Number(base.cliente_id), nombre: base.cliente } : null };
+    const servs = (hs.datos.servicios_pendientes || []);
+    const opServ = s => `<option value="${s.id}"${Number(s.id) === Number(base.servicio_id) ? ' selected' : ''}>${cliEsc(s.nombre)} · ${s.duracion_min} min${s.es_2pax ? ' · 2 personas' : ''}</option>`;
+    const conProf = servs.filter(s => s.requiere_profesor), sinProf = servs.filter(s => !s.requiere_profesor);
+    const dias = base.dias || [];
+    const diasMostrar = [1, 2, 3, 4, 5].concat(dias.filter(n => n > 5));
+    hsModalBase(x ? 'Editar pendiente' : 'Añadir a pendientes', x ? x.cliente : 'Persona a la que hay que buscar hueco', `
+      ${cliCampo('Cliente', hsPickerHtml() , false)}
+      ${cliCampo('o nombre, si aún no tiene ficha', `<input class="serv-input" data-hc="nombre_libre" maxlength="60" autocomplete="off" value="${cliEsc(x && x.sin_ficha ? x.cliente : '')}">`)}
+      ${cliCampo('Motivo', `<select class="serv-input" data-hc="tipo">${Object.keys(HS_TIPOS_PEND).map(k => `<option value="${k}"${k === (base.tipo || 'cambia_hora') ? ' selected' : ''}>${HS_TIPOS_PEND[k]}</option>`).join('')}</select>`, true)}
+      ${cliCampo('Servicio', `<select class="serv-input" data-hc="servicio"><option value="">Elige el servicio</option>
+        <optgroup label="Con profesional">${conProf.map(opServ).join('')}</optgroup>
+        ${sinProf.length ? `<optgroup label="Sin profesional (no ocupa hueco)">${sinProf.map(opServ).join('')}</optgroup>` : ''}</select>`, true)}
+      ${cliCampo('Con quién (opcional)', `<select class="serv-input" data-hc="prof"><option value="">Cualquiera</option>${hsOpcionesProf(base.profesional_id)}</select>`)}
+      <div class="hs-modal-horas">
+        ${cliCampo('Franja (opcional)', `<select class="serv-input" data-hc="franja"><option value="">Cualquiera</option>
+          <option value="manana"${base.franja === 'manana' ? ' selected' : ''}>Mañana (8:00–15:00)</option>
+          <option value="tarde"${base.franja === 'tarde' ? ' selected' : ''}>Tarde (15:00–21:00)</option></select>`)}
+        ${cliCampo('Días (opcional)', `<div class="hs-chks">${diasMostrar.map(n => `<label class="hs-chk"><input type="checkbox" data-hc-dia="${n}"${dias.includes(n) ? ' checked' : ''}> ${HS_DIAS_CORTO[n - 1]}</label>`).join('')}</div>`)}
+      </div>
+      ${cliCampo('Nota (opcional)', `<textarea class="serv-input" data-hc="nota" rows="2" maxlength="200">${cliEsc(base.nota || '')}</textarea>`)}
+      <p class="bo-ayuda">Si pones con quién, franja o días, las sugerencias respetan siempre esos filtros.</p>`,
+      x ? 'Guardar' : 'Añadir', x ? 'Quitar de pendientes' : '');
+    hsMontarPicker();
+    if (hsModalEstado.cliente) hsFijarCliente(hsModalEstado.cliente);
+    const sv = hsCampoCita('servicio');
+    const ajustaProf = () => {
+      const s = servs.find(o => Number(o.id) === Number(sv.value));
+      const pr = hsCampoCita('prof');
+      pr.disabled = !!(s && !s.requiere_profesor);
+      if (pr.disabled) pr.value = '';
+    };
+    sv.addEventListener('change', ajustaProf); ajustaProf();
+  }
+
+  async function hsPendOk() {
+    const est = hsModalEstado;
+    if (!est || hs.ocupado) return;
+    if (est.modo === 'pend_form') {
+      const nombre = (hsCampoCita('nombre_libre').value || '').trim();
+      if (!est.cliente && nombre.length < 2) { hsModalMsg('Elige un cliente o escribe el nombre de la persona.', 'error'); return; }
+      if (!hsCampoCita('servicio').value) { hsModalMsg('Elige el servicio.', 'error'); return; }
+      const dias = [...document.querySelectorAll('#hs-modal-body [data-hc-dia]:checked')].map(c => Number(c.dataset.hcDia));
+      const cuerpo = {
+        accion: est.id ? 'editar_pendiente' : 'crear_pendiente',
+        cliente_id: est.cliente ? est.cliente.id : null,
+        nombre_libre: est.cliente ? null : nombre,
+        tipo: hsCampoCita('tipo').value,
+        servicio_id: Number(hsCampoCita('servicio').value),
+        profesional_id: hsCampoCita('prof').value ? Number(hsCampoCita('prof').value) : null,
+        franja: hsCampoCita('franja').value || null,
+        dias,
+        nota: (hsCampoCita('nota').value || '').trim() || null
+      };
+      if (est.id) cuerpo.id = est.id;
+      const ok = document.getElementById('hs-modal-ok');
+      ok.disabled = true; hsModalMsg('Guardando…');
+      const r = await hsPendLlamar(cuerpo);
+      ok.disabled = false;
+      if (r && r.ok) { hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; await hsCargar(hs.semana); hsToast(r.mensaje || 'Guardado.'); return; }
+      hsModalMsg((r && r.mensaje) || 'No se ha podido guardar.', 'error');
+    }
+  }
+
+  async function hsPendSecundario() {
+    const est = hsModalEstado;
+    if (!est || hs.ocupado) return;
+    if (est.modo === 'pend_form' && est.id) {
+      if (!confirm('¿Quitar a esta persona de pendientes?\n\nNo se borra nada más: solo deja de salir en la lista.')) return;
+      const r = await hsPendLlamar({ accion: 'cerrar_pendiente', id: est.id, estado: 'descartado' });
+      if (r && r.ok) { hsCerrarModal(); document.getElementById('hs-modal-ok').textContent = 'Guardar'; await hsCargar(hs.semana); hsToast(r.mensaje || 'Hecho.'); }
+      else hsModalMsg((r && r.mensaje) || 'No se ha podido hacer.', 'error');
+    } else if (est.modo === 'pend_sug') {
+      hsPendBuscar(est.id, 3);
+    }
+  }
+
+  // ---------- Buscar hueco ----------
+  const HS_ORDEN_PROP = { tutor: 'su tutor', habitual: 'profesional habitual', otro: '' };
+
+  async function hsPendBuscar(id, semanas) {
+    const x = hsPend(id); if (!x) return;
+    const prev = hsModalEstado && hsModalEstado.modo === 'pend_sug' && hsModalEstado.id === id ? hsModalEstado.cliente : null;
+    hsModalEstado = { modo: 'pend_sug', id, semanas, props: [], cliente: prev, guardando: false };
+    hsModalBase(`Buscar hueco · ${x.cliente}`, `${x.servicio} · ${x.duracion_min} min`, '<p class="hs-pend-ayuda">Buscando huecos…</p>', '', '');
+    let r;
+    try {
+      r = await boPost(HS_ACCION_URL, { accion: 'sugerir_hueco', pendiente_id: id, semana: hs.semana, semanas });
+    } catch (err) {
+      r = { ok: false, mensaje: 'No se ha podido conectar con el servidor. Inténtalo de nuevo.' };
+    }
+    if (!hsModalEstado || hsModalEstado.modo !== 'pend_sug' || hsModalEstado.id !== id) return;
+    const est = hsModalEstado;
+    if (!r || !r.ok) {
+      document.getElementById('hs-modal-body').innerHTML = `<p class="hs-pend-ayuda">${cliEsc((r && r.mensaje) || 'No se ha podido buscar.')}</p>`;
+      return;
+    }
+    est.props = r.propuestas || [];
+    const filtros = [];
+    if (x.profesional) filtros.push('con ' + x.profesional);
+    if (x.franja) filtros.push(x.franja === 'manana' ? 'mañanas' : 'tardes');
+    if (x.dias && x.dias.length) filtros.push(x.dias.map(n => HS_DIAS_CORTO[n - 1]).join(' '));
+    const cabecera = `<p class="hs-pend-ayuda">${filtros.length ? 'Filtros de esta persona: ' + cliEsc(filtros.join(' · ')) + '. ' : ''}${Number(est.semanas) > 1 ? `Mirando ${est.semanas} semanas desde la que tienes abierta.` : 'Mirando la semana que tienes abierta.'} Salen primero los huecos retenidos, luego su tutor y sus profesionales habituales.</p>`;
+    const picker = x.sin_ficha ? `<div class="hs-sin-ficha"><p class="hs-pend-ayuda">Esta persona aún no tiene ficha de cliente. Elige a qué cliente corresponde para poder darle cita:</p>${hsPickerHtml()}</div>` : '';
+    const filas = est.props.map((pr, i) => `<div class="hs-prop">
+        <div class="hs-prop-info"><strong>${cliEsc(hsDiaFecha(pr.fecha))} · ${cliEsc(pr.hora_inicio)}–${cliEsc(pr.hora_fin)}</strong>
+          <span>${cliEsc(pr.profesional)}${HS_ORDEN_PROP[pr.orden] ? ' · ' + HS_ORDEN_PROP[pr.orden] : ''}${pr.retenido ? ' <em class="hs-prop-ret">hueco retenido</em>' : ''}</span>
+          ${(pr.avisos || []).map(a => `<small>${cliEsc(a)}</small>`).join('')}</div>
+        <button type="button" class="cb-btn is-pri" data-hs-asignar="${i}">Asignar</button></div>`).join('');
+    const vacio = `<p class="hs-pend-vacio">${cliEsc(r.mensaje || 'No hay huecos que cumplan los filtros.')}</p>`;
+    document.getElementById('hs-modal-body').innerHTML = cabecera + picker + (est.props.length ? `<div class="hs-props">${filas}</div>` : vacio);
+    if (x.sin_ficha) { hsMontarPicker(); if (est.cliente) hsFijarCliente(est.cliente); }
+    const sec = document.getElementById('hs-modal-borrar');
+    const puedeMas = Number(est.semanas) < 3 && r.motivo !== 'sin_profesor' && r.motivo !== 'sin_profesionales' && r.motivo !== 'semana_no_publicada';
+    sec.textContent = puedeMas ? 'Mirar las próximas 3 semanas' : ''; sec.style.display = puedeMas ? '' : 'none'; sec.classList.add('is-neutro');
+  }
+
+  async function hsPendAsignar(i, confirmar) {
+    const est = hsModalEstado;
+    if (!est || est.modo !== 'pend_sug' || est.guardando) return;
+    const pr = est.props[i]; const x = hsPend(est.id);
+    if (!pr || !x) return;
+    if (x.sin_ficha && !est.cliente) { hsModalMsg('Elige primero a qué cliente corresponde esta persona.', 'error'); return; }
+    est.guardando = true; hsModalMsg('Asignando…');
+    document.querySelectorAll('#hs-modal-body [data-hs-asignar]').forEach(b => { b.disabled = true; });
+    const cuerpo = { accion: 'asignar_pendiente', pendiente_id: est.id, profesional_id: pr.profesional_id, fecha: pr.fecha, hora_inicio: pr.hora_inicio, confirmar: !!confirmar };
+    if (x.sin_ficha) cuerpo.cliente_id = est.cliente.id;
+    let r;
+    try { r = await boPost(HS_ACCION_URL, cuerpo); } catch (err) { r = { ok: false, mensaje: 'No se ha podido conectar con el servidor. Inténtalo de nuevo.' }; }
+    est.guardando = false;
+    if (hsModalEstado !== est) return;
+    if (r.ok) { hsCerrarModal(); hsToast(r.mensaje || 'Cita creada.'); await hsCargar(hs.semana); return; }
+    if (r.requiere_confirmacion) {
+      const txt = (r.avisos || []).filter(a => a.nivel !== 'bloquea').map(a => '· ' + a.mensaje).join('\n');
+      document.querySelectorAll('#hs-modal-body [data-hs-asignar]').forEach(b => { b.disabled = false; });
+      hsModalMsg('');
+      if (confirm('Esta cita necesita tu confirmación:\n\n' + txt + '\n\n¿Asignar igualmente?')) hsPendAsignar(i, true);
+      return;
+    }
+    if (r.error === 'hueco_ocupado' || r.error === 'bloqueado') {
+      await hsPendBuscar(est.id, est.semanas);
+      hsModalMsg((r.mensaje || 'Ese hueco ya no está libre.') + ' He vuelto a buscar.', 'error');
+      return;
+    }
+    document.querySelectorAll('#hs-modal-body [data-hs-asignar]').forEach(b => { b.disabled = false; });
+    hsModalMsg(r.mensaje || 'No se ha podido asignar.', 'error');
+  }
+  document.getElementById('hs-modal-body').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-hs-asignar]');
+    if (b) hsPendAsignar(Number(b.dataset.hsAsignar), false);
+  });

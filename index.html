@@ -210,6 +210,7 @@
                 <button class="cb-btn" id="hs-siguiente">Semana siguiente</button>
               </div>
               <div class="hs-acciones" id="hs-acciones">
+                <button class="cb-btn" id="hs-desde-plantilla">Desde plantilla</button>
                 <button class="cb-btn" id="hs-copiar-ant">Copiar semana anterior</button>
                 <button class="cb-btn" id="hs-desde-disp">Desde disponibilidad</button>
                 <button class="cb-btn" id="hs-vaciar">Empezar de cero</button>
@@ -225,23 +226,43 @@
 
             <div id="hs-panel" style="display:none;">
               <div id="hs-banner" class="hs-banner" style="display:none;"></div>
-              <div class="hs-dias" id="hs-dias" role="tablist"></div>
-              <div class="hs-dia-bar">
-                <div class="pill-filter" id="hs-modo" role="tablist" aria-label="Qué editar">
-                  <button class="pill active" data-hs-modo="citas">Citas</button>
-                  <button class="pill" data-hs-modo="tramos">Tramos</button>
+              <div id="hs-fijas" class="hs-fijas" style="display:none;"></div>
+              <div id="hs-retenidos" class="hs-retenidos" style="display:none;"></div>
+              <div class="hs-cuerpo" id="hs-cuerpo">
+                <div class="hs-main">
+                  <div class="hs-dias" id="hs-dias" role="tablist"></div>
+                  <div class="hs-dia-bar">
+                    <div class="pill-filter" id="hs-modo" role="tablist" aria-label="Qué editar">
+                      <button class="pill active" data-hs-modo="citas">Citas</button>
+                      <button class="pill" data-hs-modo="tramos">Tramos</button>
+                    </div>
+                    <span class="hs-leyenda">
+                      <i class="hs-ley hs-ley-trabajo"></i>Trabaja (el bot puede ofrecerlo)
+                      <i class="hs-ley hs-ley-recepcion"></i>Recepción
+                      <i class="hs-ley hs-ley-bloqueado"></i>Ocupado
+                      <i class="hs-ley hs-ley-cita"></i>Cita (color del profesional; nombre en rojo = cliente difícil)
+                      <i class="hs-ley hs-ley-no"></i>No trabaja
+                    </span>
+                    <button class="cb-btn" id="hs-pend-toggle" type="button" aria-expanded="true">Pendientes</button>
+                    <button class="cb-btn" id="hs-cerrar-dia">Cerrar este día</button>
+                  </div>
+                  <p class="hs-ayuda" id="hs-ayuda">Pulsa en la columna de un profesional para añadir un tramo; pulsa en un tramo para cambiarlo o quitarlo. Cada cambio se guarda solo como borrador: el bot no ve nada hasta que pulses «Publicar semana».</p>
+                  <div class="hs-grid-wrap"><div class="hs-grid" id="hs-grid"></div></div>
                 </div>
-                <span class="hs-leyenda">
-                  <i class="hs-ley hs-ley-trabajo"></i>Trabaja (el bot puede ofrecerlo)
-                  <i class="hs-ley hs-ley-recepcion"></i>Recepción
-                  <i class="hs-ley hs-ley-bloqueado"></i>Ocupado
-                  <i class="hs-ley hs-ley-cita"></i>Cita (color del profesional; nombre en rojo = cliente difícil)
-                  <i class="hs-ley hs-ley-no"></i>No trabaja
-                </span>
-                <button class="cb-btn" id="hs-cerrar-dia">Cerrar este día</button>
+                <aside class="hs-pend" id="hs-pend" aria-label="Pendientes de colocar">
+                  <div class="hs-pend-head">
+                    <h3>Pendientes <span class="hs-pend-n" id="hs-pend-n"></span></h3>
+                    <button class="cb-btn is-pri" id="hs-pend-add" type="button">+ Añadir</button>
+                  </div>
+                  <p class="hs-pend-ayuda">Personas a las que hay que buscar hueco. Salen por tiempo de espera; «Primero» sube a quien tú quieras.</p>
+                  <div id="hs-pend-lista"></div>
+                  <details class="hs-sincita" id="hs-sincita">
+                    <summary>Sin cita esta semana <span class="hs-pend-n" id="hs-sincita-n"></span></summary>
+                    <p class="hs-pend-ayuda">Aviso automático: clientes con reserva fija o bono reciente que no tienen cita esta semana. Tú decides si les buscas hueco.</p>
+                    <div id="hs-sincita-lista"></div>
+                  </details>
+                </aside>
               </div>
-              <p class="hs-ayuda" id="hs-ayuda">Pulsa en la columna de un profesional para añadir un tramo; pulsa en un tramo para cambiarlo o quitarlo. Cada cambio se guarda solo como borrador: el bot no ve nada hasta que pulses «Publicar semana».</p>
-              <div class="hs-grid-wrap"><div class="hs-grid" id="hs-grid"></div></div>
               <div class="hs-bottom">
                 <div class="hs-box">
                   <h3>Avisos de la semana</h3>
