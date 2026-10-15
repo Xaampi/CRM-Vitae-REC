@@ -727,10 +727,10 @@
   .hs-tramo.is-fondo:hover{outline:none;filter:none;}
 
   /* ============ HORARIO SEMANAL · incremento 4 (pendientes y sugerencia de hueco) ============ */
-  .hs-cuerpo{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start;}
+  .hs-cuerpo{display:grid;grid-template-columns:minmax(0,1fr) clamp(232px,18vw,290px);gap:14px;align-items:start;}
   .hs-cuerpo.sin-pend{grid-template-columns:minmax(0,1fr);}
   .hs-main{min-width:0;}
-  .hs-pend{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 14px;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto;min-width:0;}
+  .hs-pend{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 14px;position:sticky;top:78px;max-height:calc(100vh - 94px);overflow:auto;min-width:0;}
   .hs-pend[hidden]{display:none;}
   .hs-pend-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
   .hs-pend-head h3{margin:0;font-size:14px;}
