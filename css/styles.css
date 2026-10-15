@@ -736,6 +736,9 @@
   .hs-pend-head h3{margin:0;font-size:14px;}
   .hs-pend-n{font-weight:600;color:var(--text-muted);font-size:12.5px;}
   .hs-pend-ayuda{font-size:12px;color:var(--text-muted);margin:0 0 10px;line-height:1.45;}
+  .hs-pend .hs-retenidos{border:none;border-top:1px solid var(--border);border-radius:0;padding:12px 0 0;margin:12px 0 0;background:transparent;}
+  .hs-pend .hs-ret{flex-direction:column;align-items:stretch;gap:6px;}
+  .hs-pend .hs-ret .cb-btn{width:100%;}
   .hs-pend-vacio{font-size:12.5px;color:var(--text-muted);margin:0 0 10px;line-height:1.45;}
   #hs-pend-toggle.is-activo{background:var(--dark);color:#fff;}
   .hs-pc{border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:8px;background:#fff;display:flex;flex-direction:column;gap:3px;}
