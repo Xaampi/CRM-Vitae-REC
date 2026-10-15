@@ -4032,8 +4032,10 @@
 
   function hsCerrarModal() {
     hsModalEstado = null;
-    document.getElementById('hs-modal').classList.remove('open');
-    document.getElementById('hs-modal').setAttribute('aria-hidden', 'true');
+    const hm = document.getElementById('hs-modal');
+    if (hm.contains(document.activeElement)) document.activeElement.blur();
+    hm.classList.remove('open');
+    hm.setAttribute('aria-hidden', 'true');
   }
 
   function hsModalMsg(texto, tipo) {
