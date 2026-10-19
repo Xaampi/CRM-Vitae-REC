@@ -344,6 +344,9 @@
   .cli-btn-del:disabled{opacity:.5;cursor:default;}
   .cli-btn-sec:hover{background:#E7E8EC;}
   .cli-sec .serv-input.cli-invalid{border-color:var(--red);}
+  .cli-excl{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding:2px 0;}
+  .cli-excl .cli-check{font-weight:400;}
+  .cli-excl.cli-invalid{outline:1px solid var(--red);outline-offset:4px;border-radius:6px;}
   .cli-check input{cursor:pointer;}
   .cli-check{cursor:pointer;}
   .cli-req{color:var(--red);}

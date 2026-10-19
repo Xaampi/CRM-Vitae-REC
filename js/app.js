@@ -111,7 +111,8 @@
   //                etiqueta_dificil, tipo_agenda, lesiones, objetivos, notas_internas, es_nuevo,
   //                lopd_enviado, fecha_alta, activo, habituales_todos } | null,
   //     habituales: [{ profesional_id, orden }]  (orden 1..3),
-  //     excluido: profesional_id | null,
+  //     excluidos: [profesional_id, ...] (puede haber varios; vacío si ninguno),
+  //     excluido: profesional_id | null  (compatibilidad: el primero de `excluidos`),
   //     documentos: [{ id, nombre, mime_type, tamano_bytes, subido_en }]  (sin contenido),
   //     profesionales: [{ id, nombre }]  (solo activos, para los desplegables) }
   //   `cliente: null` si el id no existe. Header: Authorization: Bearer <token>
@@ -122,7 +123,7 @@
   //   { id (solo al editar), nombre, apellidos, telefono, fecha_nacimiento ('YYYY-MM-DD'|''),
   //     tipo_agenda ('hora_fija'|'semanal'), etiqueta_dificil, activo, lopd_enviado,
   //     tutor_id|null, habituales_todos, habituales: [profesional_id, ...] (máx. 3, el orden
-  //     de la lista es el orden 1..3), excluido: profesional_id|null, lesiones, objetivos, notas_internas }
+  //     de la lista es el orden 1..3), excluidos: [profesional_id, ...], lesiones, objetivos, notas_internas }
   //   panel-clientes-alta        -> { ok: true, id }  |  { ok: false, error, mensaje }
   //   panel-clientes-actualizar  -> { ok: true, id }  |  { ok: false, error, mensaje }
   //   El backend valida y normaliza el teléfono; `mensaje` es apto para enseñar tal cual.
@@ -1314,6 +1315,15 @@
       opcionesAgenda += `<option value="${cliEsc(c.tipo_agenda)}" selected>${cliEsc(c.tipo_agenda)}</option>`;
     }
 
+    const excluidosSel = (Array.isArray(f.excluidos) ? f.excluidos : (f.excluido != null ? [f.excluido] : [])).map(Number);
+    let excluidosHtml = profesionales.map(p =>
+      `<label class="cli-check"><input type="checkbox" data-excl="${Number(p.id)}"${excluidosSel.includes(Number(p.id)) ? ' checked' : ''}> ${cliEsc(p.nombre)}</label>`
+    ).join('');
+    // Un profesional excluido que ya no está activo no debe desaparecer en silencio.
+    excluidosSel.filter(id => !profesionales.some(p => Number(p.id) === id)).forEach(id => {
+      excluidosHtml += `<label class="cli-check"><input type="checkbox" data-excl="${id}" checked> Profesional inactivo (#${id})</label>`;
+    });
+
     const slots = [1, 2, 3].map(n => cliCampo(
       `Habitual ${n}`,
       `<select class="serv-input" data-campo="hab${n}">${cliOpcionesProf(profesionales, porOrden[n], '— Sin asignar —')}</select>`
@@ -1349,7 +1359,7 @@
           <label class="cli-check"><input type="checkbox" data-campo="habituales_todos" ${c.habituales_todos ? 'checked' : ''}> Todos los profesionales son habituales</label>
         </div>
         <div class="cli-sec-inner" id="cli-slots" style="${c.habituales_todos ? 'display:none;' : ''}">${slots}</div>
-        ${cliCampo('Excluido (no se le asigna nunca)', `<select class="serv-input" data-campo="excluido">${cliOpcionesProf(profesionales, f.excluido, '— Ninguno —')}</select>`)}
+        ${cliCampo('Excluidos (no se le asignan nunca)', `<div class="cli-excl" data-campo="excluidos">${excluidosHtml}</div>`)}
       </section>
 
       <section class="cli-sec">
@@ -1557,7 +1567,7 @@
       tutor_id: idONull('tutor_id'),
       habituales_todos: todos,
       habituales,
-      excluido: idONull('excluido'),
+      excluidos: Array.from(document.querySelectorAll('#cli-drawer-body [data-excl]:checked')).map(el => Number(el.dataset.excl)),
       lesiones: txt('lesiones'),
       objetivos: txt('objetivos'),
       notas_internas: txt('notas_internas')
@@ -1574,11 +1584,11 @@
     if (new Set(d.habituales).size !== d.habituales.length) {
       return { campo: 'hab1', mensaje: 'Un profesional no puede repetirse entre los habituales.' };
     }
-    if (d.excluido !== null && d.habituales.includes(d.excluido)) {
-      return { campo: 'excluido', mensaje: 'El profesional excluido no puede ser también habitual.' };
+    if (d.excluidos.some(id => d.habituales.includes(id))) {
+      return { campo: 'excluidos', mensaje: 'Un profesional excluido no puede ser también habitual.' };
     }
-    if (d.excluido !== null && d.excluido === d.tutor_id) {
-      return { campo: 'excluido', mensaje: 'El profesional excluido no puede ser el tutor.' };
+    if (d.tutor_id !== null && d.excluidos.includes(d.tutor_id)) {
+      return { campo: 'excluidos', mensaje: 'El tutor no puede estar entre los excluidos.' };
     }
     return null;
   }
@@ -1587,7 +1597,7 @@
   const CLI_ERROR_CAMPO = {
     nombre_obligatorio: 'nombre', telefono_invalido: 'telefono', telefono_duplicado: 'telefono',
     fecha_invalida: 'fecha_nacimiento', tipo_agenda_invalido: 'tipo_agenda',
-    demasiados_habituales: 'hab1', habituales_duplicados: 'hab1', excluido_conflicto: 'excluido'
+    demasiados_habituales: 'hab1', habituales_duplicados: 'hab1', excluido_conflicto: 'excluidos'
   };
 
   function cliMensaje(texto, tipo) {
