@@ -3679,6 +3679,7 @@
     document.getElementById('hs-error').style.display = 'none';
     document.getElementById('hs-panel').style.display = '';
     hsRender();
+    hsCargarAvisosCal(false);
   }
 
   // ---------- Render ----------
@@ -3895,6 +3896,97 @@
     cont.innerHTML = `<span>${texto}</span>${boton}${detalle}`;
     cont.style.display = '';
   }
+
+  // ---------- Avisos de Calendar (B5b) ----------
+  // Lista de lo que el CRM no ha podido o querido aplicar solo al sincronizar con Google Calendar.
+  // POST panel-horario-accion {accion:'avisos_calendar'} -> {ok, total, avisos:[{id, tipo, cita_id, detalle, creado_en, fecha, hora, cliente}]}
+  // POST panel-horario-accion {accion:'resolver_aviso_calendar', id} -> {ok}
+  const HS_GCAL_TIPOS = {
+    posible_duplicado: ['Posible duplicado', 'amber'],
+    ambiguo: ['Hay que revisarlo', 'amber'],
+    no_aplicado: ['No se aplicó', 'red'],
+    cita_cancelada: ['Borrada en Calendar', 'red'],
+    pendiente_revisar: ['Pendiente por revisar', 'amber'],
+    cambio_con_aviso: ['Movida desde Calendar', 'blue']
+  };
+  hs.gcal = { avisos: [], total: 0, cargadoEn: 0, error: '' };
+
+  async function hsCargarAvisosCal(forzar) {
+    if (!forzar && Date.now() - hs.gcal.cargadoEn < 20000) return;
+    hs.gcal.cargadoEn = Date.now();
+    try {
+      const r = await boPost(HS_ACCION_URL, { accion: 'avisos_calendar' });
+      if (!r || r.ok !== true || !Array.isArray(r.avisos)) return;
+      hs.gcal.avisos = r.avisos;
+      hs.gcal.total = Number(r.total) || r.avisos.length;
+      hs.gcal.error = '';
+    } catch (err) { return; }
+    hsRenderAvisosCal();
+  }
+
+  function hsRenderAvisosCal() {
+    const cont = document.getElementById('hs-gcal');
+    if (!cont) return;
+    const lista = hs.gcal.avisos;
+    if (!lista.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+    const abierto = cont.dataset.cerrado === '1' ? '' : ' open';
+    const filas = lista.map(a => {
+      const t = HS_GCAL_TIPOS[a.tipo] || [a.tipo, 'amber'];
+      const cuando = a.fecha ? `${cliEsc(a.cliente || 'Cita')} · ${hsDiaFecha(a.fecha)}${a.hora ? ' ' + cliEsc(a.hora) : ''}` : '';
+      return `<li class="hs-gcal-item" data-hs-gcal-id="${Number(a.id)}">
+        <span class="hs-gcal-tipo is-${t[1]}">${cliEsc(t[0])}</span>
+        <div class="hs-gcal-txt">${cuando ? `<div class="hs-gcal-cuando">${cuando}</div>` : ''}<div>${cliEsc(a.detalle)}</div></div>
+        <div class="hs-gcal-bt">
+          ${a.fecha ? `<button class="cb-btn" type="button" data-hs-gcal-ver="${cliEsc(a.fecha)}">Ver día</button>` : ''}
+          <button class="cb-btn is-pri" type="button" data-hs-gcal-ok="${Number(a.id)}">Resuelto</button>
+        </div>
+      </li>`;
+    }).join('');
+    cont.innerHTML = `<details class="hs-gcal-det"${abierto}><summary><strong>Avisos de Calendar</strong> <span class="hs-pend-n">${lista.length}</span></summary>
+      <p class="hs-gcal-ayuda">Cosas que han pasado al sincronizar con Google Calendar y que conviene mirar. Pulsa «Resuelto» cuando ya no haga falta.</p>
+      ${hs.gcal.error ? `<p class="cli-form-msg" role="alert">${cliEsc(hs.gcal.error)}</p>` : ''}
+      <ul class="hs-gcal-lista">${filas}</ul></details>`;
+    cont.style.display = '';
+  }
+
+  async function hsResolverAvisoCal(id) {
+    const fila = document.querySelector(`[data-hs-gcal-id="${id}"]`);
+    if (fila) fila.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    let r;
+    try { r = await boPost(HS_ACCION_URL, { accion: 'resolver_aviso_calendar', id }); }
+    catch (err) { r = { ok: false, mensaje: 'No se ha podido conectar con el servidor. Inténtalo de nuevo.' }; }
+    if (r && (r.ok === true || r.error === 'no_existe')) {
+      hs.gcal.avisos = hs.gcal.avisos.filter(a => Number(a.id) !== Number(id));
+      hs.gcal.error = '';
+    } else {
+      hs.gcal.error = (r && r.mensaje) || 'No se ha podido marcar el aviso. Inténtalo de nuevo.';
+    }
+    hsRenderAvisosCal();
+  }
+
+  async function hsVerDiaAviso(fecha) {
+    const d = hsAFecha(fecha);
+    if (isNaN(d.getTime())) return;
+    const dow = d.getUTCDay() || 7;
+    const lunes = hsSumar(fecha, -(dow - 1));
+    if (hs.ocupado) return;
+    if (lunes !== hs.semana) await hsCargar(lunes);
+    hs.modo = 'citas';
+    hs.dia = dow;
+    hsRender();
+    const g = document.getElementById('hs-grid');
+    if (g && g.scrollIntoView) g.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.getElementById('hs-gcal').addEventListener('click', (e) => {
+    const ok = e.target.closest('[data-hs-gcal-ok]');
+    if (ok) return hsResolverAvisoCal(Number(ok.dataset.hsGcalOk));
+    const ver = e.target.closest('[data-hs-gcal-ver]');
+    if (ver) return hsVerDiaAviso(ver.dataset.hsGcalVer);
+  });
+  document.getElementById('hs-gcal').addEventListener('toggle', (e) => {
+    if (e.target && e.target.classList && e.target.classList.contains('hs-gcal-det')) e.currentTarget.dataset.cerrado = e.target.open ? '' : '1';
+  }, true);
 
   async function hsCrearFijas() {
     if (hs.ocupado || !hs.semana) return;
@@ -4547,6 +4639,8 @@
     const off = hs.ocupado ? ' disabled' : '';
     return `<div class="hs-pc${x.primero ? ' is-primero' : ''}" data-hs-pc="${Number(x.id)}">
       <div class="hs-pc-top"><strong${x.dificil ? ' class="is-dificil"' : ''}>${cliEsc(x.cliente)}</strong>${x.primero ? '<span class="hs-pc-flag">Primero</span>' : ''}</div>
+      ${(x.origen === 'calendar' || x.revisar) ? `<div class="hs-pc-badges">${x.origen === 'calendar' ? '<span class="hs-pc-cal">Desde Calendar</span>' : ''}${x.revisar ? '<span class="hs-pc-rev">Revisar</span>' : ''}</div>` : ''}
+      ${x.revisar && x.revisar_motivo ? `<div class="hs-pc-revmotivo">${cliEsc(x.revisar_motivo)} Al guardar con «Editar» se quita esta marca.</div>` : ''}
       <div class="hs-pc-tipo">${cliEsc(HS_TIPOS_PEND[x.tipo] || x.tipo)} · espera ${hsEsperaTexto(Number(x.dias_espera))}</div>
       <div class="hs-pc-serv">${cliEsc(x.servicio)} · ${Number(x.duracion_min)} min${x.requiere_profesor ? '' : ' · sin profesional'}</div>
       ${chips.length ? `<div class="hs-pc-chips">${chips.map(c => `<span>${cliEsc(c)}</span>`).join('')}</div>` : ''}

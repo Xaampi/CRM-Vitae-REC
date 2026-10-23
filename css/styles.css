@@ -703,6 +703,18 @@
   .hs-fijas-det{flex-basis:100%;font-size:12px;}
   .hs-fijas-det summary{cursor:pointer;font-weight:600;}
   .hs-fijas-det ul{margin:6px 0 0;padding-left:18px;}
+  .hs-gcal{background:#fff;border:1px solid var(--border);border-left:4px solid #E2A03F;border-radius:12px;padding:10px 16px;margin-bottom:14px;font-size:13px;}
+  .hs-gcal-det summary{cursor:pointer;font-size:14px;}
+  .hs-gcal-ayuda{margin:6px 0 8px;color:var(--muted,#6B7280);font-size:12px;}
+  .hs-gcal-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
+  .hs-gcal-item{display:flex;align-items:flex-start;gap:10px 12px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:8px;line-height:1.45;}
+  .hs-gcal-tipo{flex:0 0 auto;font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;white-space:nowrap;}
+  .hs-gcal-tipo.is-amber{background:var(--amber-bg);color:#7A4B05;}
+  .hs-gcal-tipo.is-red{background:var(--red-bg);color:#8E1B1B;}
+  .hs-gcal-tipo.is-blue{background:#EEF2FF;color:#2B3A8C;}
+  .hs-gcal-txt{flex:1 1 260px;min-width:0;overflow-wrap:anywhere;}
+  .hs-gcal-cuando{font-weight:600;margin-bottom:2px;}
+  .hs-gcal-bt{flex:0 0 auto;display:flex;gap:6px;}
   .hs-retenidos{background:#fff;border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:14px;}
   .hs-retenidos h4{margin:0 0 4px;font-size:13px;}
   .hs-retenidos p.hs-ret-ayuda{margin:0 0 8px;font-size:12px;color:var(--text-muted);}
@@ -755,6 +767,10 @@
   .hs-pc-serv{font-size:12.5px;}
   .hs-pc-chips{display:flex;flex-wrap:wrap;gap:4px;}
   .hs-pc-chips span{font-size:11px;font-weight:600;background:#EEF2FF;color:#2B3A8C;border-radius:20px;padding:1px 8px;}
+  .hs-pc-badges{display:flex;gap:6px;flex-wrap:wrap;}
+  .hs-pc-cal{font-size:10.5px;font-weight:700;background:#EEF2FF;color:#2B3A8C;border-radius:20px;padding:1px 8px;}
+  .hs-pc-rev{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;background:var(--amber-bg);color:#7A4B05;border-radius:20px;padding:1px 8px;}
+  .hs-pc-revmotivo{font-size:12px;color:#7A4B05;background:var(--amber-bg);border-radius:6px;padding:4px 7px;}
   .hs-pc-nota{font-size:12px;color:#4B5563;background:#F6F7F9;border-radius:6px;padding:4px 7px;}
   .hs-pc-btns{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;}
   .hs-sincita{margin-top:12px;border-top:1px solid var(--border);padding-top:10px;}
